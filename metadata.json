@@ -1,0 +1,6 @@
+{
+  "name": "Formulir Cerdas & Survei",
+  "description": "Formulir interaktif dengan validasi kustom, sinkronisasi Google Sheets, analitik visual responsif, dan notifikasi email.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

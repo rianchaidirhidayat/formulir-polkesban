@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "Form": {
+      "title": "Form",
+      "description": "Form schema configuration and settings",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the form"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the form"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description and instructions"
+        },
+        "questions": {
+          "type": "array",
+          "description": "List of questions in the form"
+        },
+        "theme": {
+          "type": "object",
+          "description": "Theme visual styling configuration"
+        },
+        "integrations": {
+          "type": "object",
+          "description": "Settings for external integrations"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        }
+      },
+      "required": ["id", "title"]
+    },
+    "Response": {
+      "title": "Response",
+      "description": "Individual employee or respondent submission",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique response ID"
+        },
+        "formId": {
+          "type": "string",
+          "description": "ID of the form submitted"
+        },
+        "submittedAt": {
+          "type": "string",
+          "description": "ISO timestamp of submission"
+        },
+        "respondentName": {
+          "type": "string",
+          "description": "Name of the respondent"
+        },
+        "respondentEmail": {
+          "type": "string",
+          "description": "Email of the respondent"
+        },
+        "answers": {
+          "type": "object",
+          "description": "Key-value map of question IDs to answer values"
+        },
+        "googleSheetStatus": {
+          "type": "string",
+          "enum": ["pending", "synced", "failed"]
+        },
+        "emailNotificationStatus": {
+          "type": "string",
+          "enum": ["pending", "sent", "failed"]
+        },
+        "webhookStatus": {
+          "type": "string",
+          "enum": ["pending", "sent", "failed", "not_configured"]
+        }
+      },
+      "required": ["id", "formId", "submittedAt"]
+    }
+  },
+  "firestore": {
+    "/forms/{formId}": {
+      "schema": "Form",
+      "description": "Stores form definitions and configuration"
+    },
+    "/responses/{responseId}": {
+      "schema": "Response",
+      "description": "Stores form responses submitted by employees"
+    }
+  }
+}
