@@ -25,11 +25,30 @@ import {
   deleteResponseFromFirestore,
 } from './services/firestoreService';
 import { ShareModal } from './components/ShareModal';
+import { AdminAuthModal } from './components/AdminAuthModal';
 import { Bell, CheckCircle2, AlertCircle, Sparkles, X, Database } from 'lucide-react';
 
+// Helper to detect locked respondent mode from query params
+const checkIsRespondentMode = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const searchParams = new URLSearchParams(window.location.search);
+  const view = searchParams.get('view');
+  const mode = searchParams.get('mode');
+  if (view === 'form' || view === 'respondent' || mode === 'respondent' || mode === 'form') {
+    return true;
+  }
+  return false;
+};
+
 export default function App() {
+  // Mode Responden: Dikunci saat link publik ?view=form dibagikan ke pegawai
+  const [isRespondentMode, setIsRespondentMode] = useState<boolean>(() => checkIsRespondentMode());
+  const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
+
   // Application State
-  const [activeTab, setActiveTab] = useState<NavigationTab>('respondent');
+  const [activeTab, setActiveTab] = useState<NavigationTab>(() =>
+    checkIsRespondentMode() ? 'respondent' : 'editor'
+  );
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     return (
       localStorage.getItem('theme') === 'dark' ||
@@ -116,6 +135,58 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  // Sync respondent mode with browser navigation & URL changes
+  useEffect(() => {
+    const handlePopState = () => {
+      const isResp = checkIsRespondentMode();
+      setIsRespondentMode(isResp);
+      if (isResp) setActiveTab('respondent');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Force respondent tab when respondent mode is active
+  useEffect(() => {
+    if (isRespondentMode) {
+      setActiveTab('respondent');
+    }
+  }, [isRespondentMode]);
+
+  const handleSwitchToAdmin = () => {
+    setIsAdminAuthModalOpen(true);
+  };
+
+  const handleAdminUnlockSuccess = () => {
+    setIsRespondentMode(false);
+    setActiveTab('editor');
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', 'admin');
+      window.history.pushState({}, '', url.toString());
+    }
+    setToastMessage({
+      title: 'Mode Admin Aktif',
+      description: 'Menu Builder, Analytics, Tema, dan Integrasi telah dibuka.',
+      type: 'success',
+    });
+  };
+
+  const handlePreviewRespondent = () => {
+    setIsRespondentMode(true);
+    setActiveTab('respondent');
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', 'form');
+      window.history.pushState({}, '', url.toString());
+    }
+    setToastMessage({
+      title: 'Mode Responden Terkunci',
+      description: 'Menu Builder, Analytics, Integrasi, dan Themes disembunyikan. Pegawai hanya dapat mengisi data.',
+      type: 'info',
+    });
+  };
 
   // Firebase Firestore Real-Time Database Connection & Synchronization
   useEffect(() => {
@@ -469,6 +540,8 @@ export default function App() {
         onSignOut={handleSignOut}
         isFirestoreConnected={isFirestoreConnected}
         onShareForm={() => setIsShareModalOpen(true)}
+        isRespondentMode={isRespondentMode}
+        onSwitchToAdmin={handleSwitchToAdmin}
       />
 
       {/* Main View Area */}
@@ -477,7 +550,7 @@ export default function App() {
           <FormRespondentView
             config={formConfig}
             onSubmit={handleSubmitForm}
-            onBackToEditor={() => setActiveTab('editor')}
+            onBackToEditor={isRespondentMode ? undefined : () => setActiveTab('editor')}
           />
         )}
 
@@ -523,6 +596,14 @@ export default function App() {
         onClose={() => setIsShareModalOpen(false)}
         formTitle={formConfig.title}
         isFirestoreConnected={isFirestoreConnected}
+        onPreviewRespondentMode={handlePreviewRespondent}
+      />
+
+      {/* Admin Unlock Modal */}
+      <AdminAuthModal
+        isOpen={isAdminAuthModalOpen}
+        onClose={() => setIsAdminAuthModalOpen(false)}
+        onSuccess={handleAdminUnlockSuccess}
       />
 
       {/* Toast Notification Banner */}
