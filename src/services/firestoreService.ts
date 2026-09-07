@@ -221,22 +221,33 @@ export async function initializeFirestoreDatabase(
       await batch.commit();
     }
 
-    // 3. Check and seed default employees if collection is empty
+    // 3. Check and seed default employees if collection is empty or has old dummy count
     const empSnap = await getDocs(collection(db, EMPLOYEES_COLLECTION));
-    if (empSnap.empty) {
-      const batch = writeBatch(db);
-      DEFAULT_EMPLOYEES.forEach((emp) => {
-        const ref = doc(db, EMPLOYEES_COLLECTION, emp.id);
-        batch.set(ref, emp);
-      });
-      await batch.commit();
-      try {
-        localStorage.setItem('app_master_employees', JSON.stringify(DEFAULT_EMPLOYEES));
-      } catch (_) {}
+    if (empSnap.empty || empSnap.size < 50) {
+      await saveBatchEmployees(DEFAULT_EMPLOYEES);
     }
   } catch (error) {
     console.warn('Initial Firestore database seeding notice:', error);
   }
+}
+
+/**
+ * Helper to sanitize employee data for Firestore (guarantees NO undefined fields)
+ */
+function sanitizeEmployeeDoc(emp: Employee): Record<string, any> {
+  const cleanNip = (emp.nip || '').replace(/[^0-9]/g, '').trim();
+  const id = emp.id || cleanNip;
+  const docData: Record<string, any> = {
+    id,
+    nip: cleanNip,
+    nama: (emp.nama || '').trim(),
+    updatedAt: new Date().toISOString(),
+  };
+  if (emp.jabatan && emp.jabatan.trim()) docData.jabatan = emp.jabatan.trim();
+  if (emp.unitKerja && emp.unitKerja.trim()) docData.unitKerja = emp.unitKerja.trim();
+  if (emp.email && emp.email.trim() && emp.email.trim() !== '-') docData.email = emp.email.trim();
+  if (emp.phone && emp.phone.trim() && emp.phone.trim() !== '-') docData.phone = emp.phone.trim();
+  return docData;
 }
 
 /**
@@ -254,6 +265,13 @@ export function subscribeToEmployees(
       snapshot.forEach((d) => {
         employees.push(d.data() as Employee);
       });
+      if (employees.length === 0) {
+        onUpdate(DEFAULT_EMPLOYEES);
+        try {
+          localStorage.setItem('app_master_employees', JSON.stringify(DEFAULT_EMPLOYEES));
+        } catch (_) {}
+        return;
+      }
       try {
         localStorage.setItem('app_master_employees', JSON.stringify(employees));
       } catch (_) {}
@@ -352,17 +370,13 @@ export async function findEmployeeByNip(rawNip: string): Promise<Employee | null
 export async function saveEmployee(employee: Employee): Promise<void> {
   const cleanNip = employee.nip.replace(/[^0-9]/g, '').trim();
   const id = employee.id || cleanNip;
-  const data: Employee = {
-    ...employee,
-    id,
-    nip: cleanNip,
-    updatedAt: new Date().toISOString(),
-  };
+  const data = sanitizeEmployeeDoc(employee);
 
   try {
     await setDoc(doc(db, EMPLOYEES_COLLECTION, id), data);
   } catch (err) {
     console.warn('Could not save employee to Firestore, saving locally:', err);
+    throw err;
   }
 
   // Always update local cache
@@ -371,9 +385,9 @@ export async function saveEmployee(employee: Employee): Promise<void> {
     let list: Employee[] = cached ? JSON.parse(cached) : [...DEFAULT_EMPLOYEES];
     const idx = list.findIndex((e) => e.id === id || e.nip === cleanNip);
     if (idx >= 0) {
-      list[idx] = data;
+      list[idx] = data as Employee;
     } else {
-      list.push(data);
+      list.push(data as Employee);
     }
     localStorage.setItem('app_master_employees', JSON.stringify(list));
   } catch (_) {}
@@ -386,31 +400,26 @@ export async function saveBatchEmployees(employees: Employee[]): Promise<number>
   if (!employees.length) return 0;
 
   let savedCount = 0;
-  try {
-    // Firestore writeBatch max is 500 ops per batch
-    const chunks: Employee[][] = [];
-    for (let i = 0; i < employees.length; i += 400) {
-      chunks.push(employees.slice(i, i + 400));
-    }
+  // Firestore writeBatch max is 500 ops per batch
+  const chunks: Employee[][] = [];
+  for (let i = 0; i < employees.length; i += 300) {
+    chunks.push(employees.slice(i, i + 300));
+  }
 
-    for (const chunk of chunks) {
+  for (const chunk of chunks) {
+    try {
       const batch = writeBatch(db);
       chunk.forEach((emp) => {
-        const cleanNip = emp.nip.replace(/[^0-9]/g, '').trim();
-        const id = emp.id || cleanNip;
-        const ref = doc(db, EMPLOYEES_COLLECTION, id);
-        batch.set(ref, {
-          ...emp,
-          id,
-          nip: cleanNip,
-          updatedAt: new Date().toISOString(),
-        });
+        const sanitized = sanitizeEmployeeDoc(emp);
+        const ref = doc(db, EMPLOYEES_COLLECTION, sanitized.id);
+        batch.set(ref, sanitized);
       });
       await batch.commit();
       savedCount += chunk.length;
+    } catch (err) {
+      console.error('Batch Firestore save error in chunk:', err);
+      // Still attempt remaining chunks if possible
     }
-  } catch (err) {
-    console.warn('Batch Firestore save notice, updating local storage:', err);
   }
 
   // Update local cache as well
@@ -418,13 +427,12 @@ export async function saveBatchEmployees(employees: Employee[]): Promise<number>
     const cached = localStorage.getItem('app_master_employees');
     let list: Employee[] = cached ? JSON.parse(cached) : [];
     employees.forEach((emp) => {
-      const cleanNip = emp.nip.replace(/[^0-9]/g, '').trim();
-      const id = emp.id || cleanNip;
-      const idx = list.findIndex((e) => e.id === id || e.nip === cleanNip);
+      const sanitized = sanitizeEmployeeDoc(emp) as Employee;
+      const idx = list.findIndex((e) => e.id === sanitized.id || e.nip === sanitized.nip);
       if (idx >= 0) {
-        list[idx] = { ...emp, id, nip: cleanNip };
+        list[idx] = sanitized;
       } else {
-        list.push({ ...emp, id, nip: cleanNip });
+        list.push(sanitized);
       }
     });
     localStorage.setItem('app_master_employees', JSON.stringify(list));

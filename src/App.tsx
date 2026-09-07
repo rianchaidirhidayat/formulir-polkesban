@@ -687,6 +687,9 @@ export default function App() {
             onAddWebhookLog={(log) => setWebhookLogs((prev) => [log, ...prev])}
             onTriggerSyncSheets={handleBatchSyncSheets}
             isSyncingSheets={isSyncingSheets}
+            onNotify={(title, description, type) =>
+              setToastMessage({ title, description, type })
+            }
           />
         )}
       </main>

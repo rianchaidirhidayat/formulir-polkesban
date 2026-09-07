@@ -34,6 +34,7 @@ interface IntegrationSettingsProps {
   onAddWebhookLog: (log: WebhookLog) => void;
   onTriggerSyncSheets: () => void;
   isSyncingSheets: boolean;
+  onNotify?: (title: string, description: string, type: 'success' | 'error' | 'info') => void;
 }
 
 export const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({
@@ -45,6 +46,7 @@ export const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({
   onAddWebhookLog,
   onTriggerSyncSheets,
   isSyncingSheets,
+  onNotify,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<
     'sheets' | 'employees' | 'email' | 'webhook' | 'security'
@@ -736,7 +738,7 @@ export const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({
 
       {/* TAB 2: MASTER PEGAWAI (NIP & AUTO-FILL) */}
       {activeSubTab === 'employees' && (
-        <EmployeeManager />
+        <EmployeeManager onNotify={onNotify} />
       )}
 
       {/* TAB 5: KEAMANAN & UBAH PIN ADMIN */}
@@ -776,8 +778,8 @@ export const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({
                 <p className="text-[#737766] dark:text-[#A3A796] leading-relaxed">
                   Pegawai yang membuka formulir publik tidak akan melihat tombol admin ataupun menu pengeditan. Untuk masuk kembali ke dashboard pengelola, Anda akan diminta memasukkan PIN rahasia ini.
                 </p>
-                <div className="pt-2 text-[11px] font-mono text-[#525746] dark:text-[#CBD5C0]">
-                  PIN Saat Ini: <span className="font-bold tracking-widest">•••• (Tersimpan Aman)</span>
+                <div className="pt-2 text-[11px] font-medium text-[#525746] dark:text-[#CBD5C0]">
+                  <span className="font-bold text-[#829273]">PIN : </span> informasi PIN hubungi Tim Kerja OSDM
                 </div>
               </div>
 

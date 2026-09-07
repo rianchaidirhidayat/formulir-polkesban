@@ -18,6 +18,8 @@ import {
   IdCard,
   Phone,
   Mail,
+  Database,
+  ClipboardPaste,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Employee } from '../types';
@@ -34,6 +36,76 @@ interface EmployeeManagerProps {
   onNotify?: (title: string, description: string, type: 'success' | 'error' | 'info') => void;
 }
 
+/**
+ * Parses delimited text (semicolon, comma, or tab) into Employee[]
+ */
+function parseDelimitedText(text: string): Employee[] {
+  const lines = text.trim().split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+
+  // Detect separator: ;, \t, or ,
+  const firstLine = lines[0];
+  let sep = ';';
+  const countSemi = (firstLine.match(/;/g) || []).length;
+  const countTab = (firstLine.match(/\t/g) || []).length;
+  const countComma = (firstLine.match(/,/g) || []).length;
+
+  if (countTab > countSemi && countTab > countComma) {
+    sep = '\t';
+  } else if (countComma > countSemi) {
+    sep = ',';
+  } else {
+    sep = ';';
+  }
+
+  const headerParts = firstLine.split(sep).map((h) => h.trim().toLowerCase().replace(/^["']|["']$/g, ''));
+  const nipIdx = headerParts.findIndex(
+    (h) => h.includes('nip') || h.includes('id') || h.includes('nomor induk') || h.includes('no induk')
+  );
+  const nameIdx = headerParts.findIndex((h) => h.includes('nama') || h.includes('name'));
+  const jabatanIdx = headerParts.findIndex(
+    (h) => h.includes('jabat') || h.includes('posisi') || h.includes('pekerjaan') || h.includes('position')
+  );
+  const unitIdx = headerParts.findIndex(
+    (h) => h.includes('unit') || h.includes('divisi') || h.includes('bagian') || h.includes('jurusan') || h.includes('department')
+  );
+  const emailIdx = headerParts.findIndex((h) => h.includes('email') || h.includes('surel'));
+  const phoneIdx = headerParts.findIndex(
+    (h) => h.includes('telepon') || h.includes('hp') || h.includes('wa') || h.includes('phone') || h.includes('whatsapp')
+  );
+
+  const result: Employee[] = [];
+  const startRow = nipIdx >= 0 || nameIdx >= 0 ? 1 : 0;
+
+  for (let i = startRow; i < lines.length; i++) {
+    const cols = lines[i].split(sep).map((c) => c.trim().replace(/^["']|["']$/g, ''));
+    const rawNip = nipIdx >= 0 ? cols[nipIdx] : cols[0];
+    const cleanNip = (rawNip || '').replace(/[^0-9]/g, '').trim();
+    const rawNama = nameIdx >= 0 ? cols[nameIdx] : cols[1];
+
+    if (!cleanNip || !rawNama) continue;
+
+    const rawJabatan = jabatanIdx >= 0 ? cols[jabatanIdx] : cols[2];
+    const rawUnit = unitIdx >= 0 ? cols[unitIdx] : cols[3];
+    let rawEmail = emailIdx >= 0 ? cols[emailIdx] : cols[4];
+    if (rawEmail === '-') rawEmail = '';
+    let rawPhone = phoneIdx >= 0 ? cols[phoneIdx] : cols[5];
+    if (rawPhone === '-') rawPhone = '';
+
+    result.push({
+      id: cleanNip,
+      nip: cleanNip,
+      nama: rawNama.trim(),
+      jabatan: rawJabatan?.trim() || undefined,
+      unitKerja: rawUnit?.trim() || undefined,
+      email: rawEmail?.trim() || undefined,
+      phone: rawPhone?.trim() || undefined,
+    });
+  }
+
+  return result;
+}
+
 export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,6 +115,17 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+
+  // Direct Text / Paste modal state
+  const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
+  const [pastedRawText, setPastedRawText] = useState('');
+
+  // Self-contained internal notification banner state
+  const [internalNotice, setInternalNotice] = useState<{
+    title: string;
+    desc: string;
+    type: 'success' | 'error' | 'info';
+  } | null>(null);
 
   // Form fields for single employee add/edit
   const [formNip, setFormNip] = useState('');
@@ -92,95 +175,106 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
 
     setSelectedFileName(file.name);
     setIsUploading(true);
+    setInternalNotice(null);
 
     try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-      const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+      let parsedEmployees: Employee[] = [];
 
-      if (jsonData.length === 0) {
-        throw new Error('Berkas Excel/CSV kosong atau format baris tidak terbaca.');
-      }
+      // Check if file is CSV or plain text
+      if (
+        file.name.toLowerCase().endsWith('.csv') ||
+        file.name.toLowerCase().endsWith('.txt') ||
+        file.type.includes('csv') ||
+        file.type.includes('text')
+      ) {
+        const textContent = await file.text();
+        parsedEmployees = parseDelimitedText(textContent);
+      } else {
+        // Excel file (.xlsx / .xls)
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
 
-      // Map columns flexibly (handles Indonesian and English headers)
-      const parsedEmployees: Employee[] = [];
-      for (const row of jsonData) {
-        // Look for NIP column
-        const rawNip = String(
-          row['NIP'] ||
-          row['nip'] ||
-          row['Nomor Induk Pegawai'] ||
-          row['No. Induk Pegawai'] ||
-          row['No Induk'] ||
-          row['ID'] ||
-          row['id'] ||
-          ''
-        ).replace(/[^0-9]/g, '').trim();
+        // Check if worksheet has single delimited text or regular columns
+        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
-        // Look for Nama column
-        const rawNama = String(
-          row['Nama'] ||
-          row['nama'] ||
-          row['Nama Pegawai'] ||
-          row['Nama Lengkap'] ||
-          row['Nama Lengkap Beserta Gelar'] ||
-          row['Name'] ||
-          ''
-        ).trim();
+        if (jsonData.length > 0) {
+          const firstKeys = Object.keys(jsonData[0] || {});
+          if (firstKeys.length === 1 && (firstKeys[0].includes(';') || firstKeys[0].includes('\t'))) {
+            // Semicolon/tab separated content wrapped in Excel
+            const csvText = XLSX.utils.sheet_to_csv(worksheet);
+            parsedEmployees = parseDelimitedText(csvText);
+          } else {
+            for (const row of jsonData) {
+              const rawNip = String(
+                row['NIP'] ||
+                row['nip'] ||
+                row['Nomor Induk Pegawai'] ||
+                row['No. Induk Pegawai'] ||
+                row['No Induk'] ||
+                row['ID'] ||
+                row['id'] ||
+                ''
+              ).replace(/[^0-9]/g, '').trim();
 
-        // Look for Jabatan column
-        const rawJabatan = String(
-          row['Jabatan'] ||
-          row['jabatan'] ||
-          row['Posisi'] ||
-          row['Pekerjaan'] ||
-          row['Position'] ||
-          ''
-        ).trim();
+              const rawNama = String(
+                row['Nama'] ||
+                row['nama'] ||
+                row['Nama Pegawai'] ||
+                row['Nama Lengkap'] ||
+                row['Nama Lengkap Beserta Gelar'] ||
+                row['Name'] ||
+                ''
+              ).trim();
 
-        // Look for Unit Kerja column
-        const rawUnit = String(
-          row['Unit Kerja'] ||
-          row['unit_kerja'] ||
-          row['Unit'] ||
-          row['Divisi'] ||
-          row['Bagian'] ||
-          row['Jurusan'] ||
-          row['Department'] ||
-          ''
-        ).trim();
+              const rawJabatan = String(
+                row['Jabatan'] ||
+                row['jabatan'] ||
+                row['Posisi'] ||
+                row['Pekerjaan'] ||
+                row['Position'] ||
+                ''
+              ).trim();
 
-        // Look for Email column
-        const rawEmail = String(
-          row['Email'] ||
-          row['email'] ||
-          row['Surel'] ||
-          ''
-        ).trim();
+              const rawUnit = String(
+                row['Unit Kerja'] ||
+                row['unit_kerja'] ||
+                row['Unit'] ||
+                row['Divisi'] ||
+                row['Bagian'] ||
+                row['Jurusan'] ||
+                row['Department'] ||
+                ''
+              ).trim();
 
-        // Look for Phone / WhatsApp column
-        const rawPhone = String(
-          row['No HP'] ||
-          row['No Telepon'] ||
-          row['Telepon'] ||
-          row['WhatsApp'] ||
-          row['phone'] ||
-          row['Phone'] ||
-          ''
-        ).trim();
+              let rawEmail = String(row['Email'] || row['email'] || row['Surel'] || '').trim();
+              if (rawEmail === '-') rawEmail = '';
 
-        if (rawNip && rawNama) {
-          parsedEmployees.push({
-            id: rawNip,
-            nip: rawNip,
-            nama: rawNama,
-            jabatan: rawJabatan || undefined,
-            unitKerja: rawUnit || undefined,
-            email: rawEmail || undefined,
-            phone: rawPhone || undefined,
-          });
+              let rawPhone = String(
+                row['No HP'] ||
+                row['No Telepon'] ||
+                row['Telepon'] ||
+                row['WhatsApp'] ||
+                row['phone'] ||
+                row['Phone'] ||
+                ''
+              ).trim();
+              if (rawPhone === '-') rawPhone = '';
+
+              if (rawNip && rawNama) {
+                parsedEmployees.push({
+                  id: rawNip,
+                  nip: rawNip,
+                  nama: rawNama,
+                  jabatan: rawJabatan || undefined,
+                  unitKerja: rawUnit || undefined,
+                  email: rawEmail || undefined,
+                  phone: rawPhone || undefined,
+                });
+              }
+            }
+          }
         }
       }
 
@@ -191,18 +285,24 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
       }
 
       setPreviewData(parsedEmployees);
+      const readyMsg = `Ditemukan ${parsedEmployees.length} data pegawai valid dari ${file.name}. Silakan tinjau dan klik tombol "Simpan ke Database" di bawah.`;
+      setInternalNotice({
+        title: 'Pratinjau Data Siap',
+        desc: readyMsg,
+        type: 'info',
+      });
       if (onNotify) {
-        onNotify(
-          'Pratinjau Berkas Siap',
-          `Ditemukan ${parsedEmployees.length} data pegawai valid dari ${file.name}. Silakan periksa lalu simpan.`,
-          'info'
-        );
+        onNotify('Pratinjau Berkas Siap', readyMsg, 'info');
       }
     } catch (err: any) {
+      const errMsg = err.message || 'Format berkas tidak didukung';
+      setInternalNotice({
+        title: 'Gagal Membaca Berkas',
+        desc: errMsg,
+        type: 'error',
+      });
       if (onNotify) {
-        onNotify('Gagal Membaca Berkas', err.message || 'Format berkas tidak didukung', 'error');
-      } else {
-        alert('Gagal membaca berkas: ' + err.message);
+        onNotify('Gagal Membaca Berkas', errMsg, 'error');
       }
     } finally {
       setIsUploading(false);
@@ -215,23 +315,90 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
     if (!previewData || previewData.length === 0) return;
 
     setIsUploading(true);
+    setInternalNotice(null);
     try {
       const count = await saveBatchEmployees(previewData);
       setPreviewData(null);
       setSelectedFileName('');
+      const successTitle = 'Data Pegawai Berhasil Disimpan ke Database!';
+      const successDesc = `Alhamdulillah! ${count} data pegawai berhasil disimpan ke database Firestore & memori lokal. NIP auto-fill formulir langsung aktif.`;
+      setInternalNotice({
+        title: successTitle,
+        desc: successDesc,
+        type: 'success',
+      });
       if (onNotify) {
-        onNotify(
-          'Impor Pegawai Berhasil!',
-          `${count} data pegawai berhasil disimpan ke database master. NIP auto-fill siap digunakan.`,
-          'success'
-        );
+        onNotify(successTitle, successDesc, 'success');
       }
     } catch (err: any) {
+      const errTitle = 'Gagal Menyimpan ke Database';
+      const errDesc = err.message || 'Terjadi masalah saat menyimpan ke Firestore.';
+      setInternalNotice({
+        title: errTitle,
+        desc: errDesc,
+        type: 'error',
+      });
+      if (onNotify) {
+        onNotify(errTitle, errDesc, 'error');
+      }
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // One-click sync of all 412 master employees into Firestore
+  const handleSyncAllDefaultEmployees = async () => {
+    setIsUploading(true);
+    setInternalNotice(null);
+    try {
+      const count = await saveBatchEmployees(DEFAULT_EMPLOYEES);
+      const successTitle = '412 Data Pegawai Berhasil Dimasukkan ke Database!';
+      const successDesc = `Seluruh ${count} data pegawai resmi telah tersimpan secara permanen di database Firestore & siap digunakan untuk auto-fill NIP formulir.`;
+      setInternalNotice({
+        title: successTitle,
+        desc: successDesc,
+        type: 'success',
+      });
+      if (onNotify) {
+        onNotify(successTitle, successDesc, 'success');
+      }
+    } catch (err: any) {
+      setInternalNotice({
+        title: 'Gagal Menyimpan ke Database',
+        desc: err.message || 'Terjadi kesalahan saat menyimpan ke Firestore.',
+        type: 'error',
+      });
       if (onNotify) {
         onNotify('Gagal Menyimpan', err.message, 'error');
       }
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  // Parse pasted raw text
+  const handleParsePastedText = () => {
+    if (!pastedRawText.trim()) return;
+    try {
+      const parsed = parseDelimitedText(pastedRawText);
+      if (parsed.length === 0) {
+        throw new Error('Tidak ada data pegawai yang dapat diproses. Pastikan format teks berisi NIP dan Nama.');
+      }
+      setPreviewData(parsed);
+      setSelectedFileName('Teks Ditempel (' + parsed.length + ' data)');
+      setIsPasteModalOpen(false);
+      setPastedRawText('');
+      const readyMsg = `Ditemukan ${parsed.length} data pegawai valid dari teks yang ditempel. Silakan tinjau dan klik "Simpan ke Database".`;
+      setInternalNotice({
+        title: 'Pratinjau Data Siap',
+        desc: readyMsg,
+        type: 'info',
+      });
+      if (onNotify) {
+        onNotify('Pratinjau Data Siap', readyMsg, 'info');
+      }
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -395,6 +562,40 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
 
   return (
     <div className="space-y-6">
+      {/* Internal Notification Banner */}
+      {internalNotice && (
+        <div
+          className={`p-4 rounded-2xl flex items-start justify-between gap-3 border shadow-xs transition-all ${
+            internalNotice.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-100'
+              : internalNotice.type === 'error'
+              ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-700 text-rose-900 dark:text-rose-100'
+              : 'bg-[#829273]/10 border-[#829273]/40 text-[#3D4035] dark:text-[#E8E6DF]'
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            {internalNotice.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            ) : internalNotice.type === 'error' ? (
+              <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            ) : (
+              <CheckCircle2 className="w-5 h-5 text-[#829273] shrink-0 mt-0.5" />
+            )}
+            <div>
+              <h4 className="text-sm font-bold">{internalNotice.title}</h4>
+              <p className="text-xs mt-0.5 opacity-90">{internalNotice.desc}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setInternalNotice(null)}
+            className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer opacity-70 hover:opacity-100"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="bg-white dark:bg-[#22251F] rounded-2xl p-6 border border-[#E5E2D1] dark:border-[#3B3E32] shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#E5E2D1] dark:border-[#3B3E32]">
@@ -420,12 +621,22 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
           <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
+              onClick={handleSyncAllDefaultEmployees}
+              disabled={isUploading}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all cursor-pointer disabled:opacity-50"
+              title="Masukkan seluruh 412 data pegawai ke database Firestore"
+            >
+              <Database className="w-3.5 h-3.5" />
+              <span>{isUploading ? 'Menyimpan ke DB...' : 'Masukan 412 Pegawai ke Database'}</span>
+            </button>
+            <button
+              type="button"
               onClick={handleDownloadTemplateExcel}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#F4F2E9] dark:bg-[#2A2D25] text-[#3D4035] dark:text-[#E8E6DF] hover:bg-[#EAE6D7] border border-[#E5E2D1] dark:border-[#3B3E32] transition-colors cursor-pointer"
               title="Unduh format template Excel"
             >
               <Download className="w-3.5 h-3.5 text-[#829273]" />
-              <span>Unduh Template Excel</span>
+              <span>Unduh Template</span>
             </button>
             <button
               type="button"
@@ -433,7 +644,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#F4F2E9] dark:bg-[#2A2D25] text-[#3D4035] dark:text-[#E8E6DF] hover:bg-[#EAE6D7] border border-[#E5E2D1] dark:border-[#3B3E32] transition-colors cursor-pointer"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-[#637254] dark:text-[#B5C4A6]" />
-              <span>Ekspor Data</span>
+              <span>Ekspor</span>
             </button>
           </div>
         </div>
@@ -448,10 +659,10 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
               </div>
               <div className="flex-1">
                 <h4 className="text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF]">
-                  Impor Berkas Excel (.xlsx, .xls) atau CSV
+                  Impor Berkas Excel (.xlsx, .xls) atau CSV / Teks
                 </h4>
                 <p className="text-[11px] text-[#737766] dark:text-[#A3A796] mt-0.5">
-                  Mendukung kolom: <code>NIP</code>, <code>Nama Lengkap</code>, <code>Jabatan</code>, <code>Unit Kerja</code>, <code>Email</code>, <code>No Telepon</code>.
+                  Mendukung kolom atau pemisah titik koma/koma: <code>NIP</code>, <code>Nama Lengkap</code>, <code>Jabatan</code>, <code>Unit Kerja</code>, <code>Email</code>, <code>No Telepon</code>.
                 </p>
               </div>
             </div>
@@ -460,19 +671,30 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".xlsx, .xls, .csv"
+                accept=".xlsx, .xls, .csv, .txt"
                 onChange={handleFileChange}
                 className="hidden"
               />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#829273] hover:bg-[#728263] text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>{isUploading ? 'Membaca Berkas...' : 'Pilih Berkas Excel / CSV'}</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#829273] hover:bg-[#728263] text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>{isUploading ? 'Membaca Berkas...' : 'Pilih Berkas Excel / CSV'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPasteModalOpen(true)}
+                  disabled={isUploading}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-[#1E201B] hover:bg-[#F4F2E9] dark:hover:bg-[#33372C] text-[#3D4035] dark:text-[#E8E6DF] border border-[#E5E2D1] dark:border-[#3B3E32] rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                >
+                  <ClipboardPaste className="w-3.5 h-3.5 text-[#829273]" />
+                  <span>Tempel Teks (CSV / Tabel)</span>
+                </button>
+              </div>
 
               <span className="text-[11px] text-[#737766] dark:text-[#A3A796]">
                 Maksimal 5.000 data per unggahan
@@ -503,10 +725,10 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
               </button>
               <button
                 type="button"
-                onClick={handleResetToDefault}
-                className="text-[11px] text-[#737766] hover:text-[#C97C5D] dark:text-[#A3A796] dark:hover:text-[#E89E82] text-center underline cursor-pointer"
+                onClick={handleSyncAllDefaultEmployees}
+                className="text-[11px] text-[#737766] hover:text-[#637254] dark:text-[#A3A796] dark:hover:text-[#CBD5C0] text-center underline cursor-pointer"
               >
-                Kembalikan ke Contoh Bawaan
+                Sinkronkan Ulang 412 Pegawai
               </button>
             </div>
           </div>
@@ -515,16 +737,16 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
 
       {/* Preview Import Modal / Card */}
       {previewData && (
-        <div className="bg-white dark:bg-[#22251F] rounded-2xl p-6 border-2 border-[#829273] shadow-md space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-[#E5E2D1] dark:border-[#3B3E32]">
+        <div className="bg-white dark:bg-[#22251F] rounded-2xl p-6 border-2 border-emerald-600 shadow-md space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E5E2D1] dark:border-[#3B3E32]">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-[#829273]" />
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
               <div>
                 <h4 className="text-sm font-bold text-[#3D4035] dark:text-[#E8E6DF]">
-                  Pratinjau Impor ({previewData.length} Pegawai Ditemukan)
+                  Pratinjau Impor ({previewData.length} Data Pegawai Ditemukan)
                 </h4>
                 <p className="text-xs text-[#737766] dark:text-[#A3A796]">
-                  Berkas: {selectedFileName} • Silakan periksa data sebelum disimpan ke Firestore
+                  Sumber: {selectedFileName} • Silakan tinjau data di bawah lalu klik tombol hijau untuk menyimpan ke database.
                 </p>
               </div>
             </div>
@@ -533,7 +755,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
               <button
                 type="button"
                 onClick={() => setPreviewData(null)}
-                className="px-3 py-1.5 rounded-xl text-xs font-medium text-[#737766] hover:bg-[#F4F2E9] dark:hover:bg-[#2A2D25] cursor-pointer"
+                className="px-3 py-2 rounded-xl text-xs font-medium text-[#737766] hover:bg-[#F4F2E9] dark:hover:bg-[#2A2D25] cursor-pointer"
               >
                 Batalkan
               </button>
@@ -541,10 +763,19 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
                 type="button"
                 onClick={handleConfirmImport}
                 disabled={isUploading}
-                className="px-4 py-1.5 rounded-xl text-xs font-bold text-white bg-[#829273] hover:bg-[#728263] shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>{isUploading ? 'Menyimpan...' : 'Simpan ke Database'}</span>
+                {isUploading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Menyimpan ke Firestore...</span>
+                  </>
+                ) : (
+                  <>
+                    <Database className="w-3.5 h-3.5" />
+                    <span>Simpan ke Database ({previewData.length} Pegawai)</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -816,6 +1047,64 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Paste Modal */}
+      {isPasteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white dark:bg-[#22251F] rounded-2xl max-w-2xl w-full p-6 border border-[#E5E2D1] dark:border-[#3B3E32] shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E5E2D1] dark:border-[#3B3E32]">
+              <div className="flex items-center gap-2">
+                <ClipboardPaste className="w-5 h-5 text-[#829273]" />
+                <h3 className="text-sm font-bold text-[#3D4035] dark:text-[#E8E6DF]">
+                  Tempel Data Pegawai (Format CSV / Tabel / Titik Koma)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPasteModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-[#F4F2E9] dark:hover:bg-[#2A2D25] text-[#737766] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[#737766] dark:text-[#A3A796]">
+              Tempel baris teks langsung dari Excel, Google Sheets, atau berkas CSV. Sistem akan otomatis mendeteksi kolom NIP, Nama, Jabatan, Unit Kerja, Email, dan Telepon.
+            </p>
+
+            <textarea
+              rows={8}
+              value={pastedRawText}
+              onChange={(e) => setPastedRawText(e.target.value)}
+              placeholder="Contoh:&#10;197009211996032001;Dr. Pramita Iriana, S,Kp., M.Biomed;Lektor Kepala;Jurusan Keperawatan;-;-&#10;196412031989032001;Dr. Supriyatin, S.Kp., M.Kep;Lektor Kepala;Jurusan Keperawatan;-;-"
+              className="w-full p-3 rounded-xl font-mono text-xs border border-[#E5E2D1] dark:border-[#3B3E32] bg-[#FDFCF8] dark:bg-[#2A2D25] text-[#3D4035] dark:text-[#E8E6DF] focus:outline-none focus:ring-2 focus:ring-[#829273]"
+            />
+
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-[11px] text-[#737766] dark:text-[#A3A796]">
+                Mendukung pemisah titik koma (;), koma (,), atau tabulasi.
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPasteModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs text-[#737766] hover:bg-[#F4F2E9] dark:hover:bg-[#2A2D25] cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleParsePastedText}
+                  disabled={!pastedRawText.trim()}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#829273] hover:bg-[#728263] disabled:opacity-50 shadow-xs cursor-pointer"
+                >
+                  Proses & Pratinjau
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
