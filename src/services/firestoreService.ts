@@ -14,7 +14,8 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { FormConfig, FormResponse } from '../types';
+import { FormConfig, FormResponse, Employee } from '../types';
+import { DEFAULT_EMPLOYEES } from '../data/defaultEmployees';
 
 // Initialize Firebase App
 export const firebaseApp =
@@ -43,6 +44,7 @@ export async function testFirestoreConnection(): Promise<boolean> {
 // Collections references
 const FORMS_COLLECTION = 'forms';
 const RESPONSES_COLLECTION = 'responses';
+const EMPLOYEES_COLLECTION = 'employees';
 
 /**
  * Subscribe to real-time form configuration changes from Firestore
@@ -218,7 +220,237 @@ export async function initializeFirestoreDatabase(
       });
       await batch.commit();
     }
+
+    // 3. Check and seed default employees if collection is empty
+    const empSnap = await getDocs(collection(db, EMPLOYEES_COLLECTION));
+    if (empSnap.empty) {
+      const batch = writeBatch(db);
+      DEFAULT_EMPLOYEES.forEach((emp) => {
+        const ref = doc(db, EMPLOYEES_COLLECTION, emp.id);
+        batch.set(ref, emp);
+      });
+      await batch.commit();
+      try {
+        localStorage.setItem('app_master_employees', JSON.stringify(DEFAULT_EMPLOYEES));
+      } catch (_) {}
+    }
   } catch (error) {
     console.warn('Initial Firestore database seeding notice:', error);
   }
+}
+
+/**
+ * Subscribe to real-time changes in the master employee directory
+ */
+export function subscribeToEmployees(
+  onUpdate: (employees: Employee[]) => void,
+  onError?: (err: Error) => void
+) {
+  const employeesCol = collection(db, EMPLOYEES_COLLECTION);
+  return onSnapshot(
+    employeesCol,
+    (snapshot) => {
+      const employees: Employee[] = [];
+      snapshot.forEach((d) => {
+        employees.push(d.data() as Employee);
+      });
+      try {
+        localStorage.setItem('app_master_employees', JSON.stringify(employees));
+      } catch (_) {}
+      onUpdate(employees);
+    },
+    (err) => {
+      console.warn('Firestore employee subscription fallback:', err);
+      // Fallback to local cache
+      try {
+        const local = localStorage.getItem('app_master_employees');
+        if (local) {
+          onUpdate(JSON.parse(local));
+          return;
+        }
+      } catch (_) {}
+      onUpdate(DEFAULT_EMPLOYEES);
+      if (onError) onError(err);
+    }
+  );
+}
+
+/**
+ * Fetch all employees from Firestore (with localStorage fallback)
+ */
+export async function getEmployees(): Promise<Employee[]> {
+  try {
+    const snapshot = await getDocs(collection(db, EMPLOYEES_COLLECTION));
+    if (!snapshot.empty) {
+      const list: Employee[] = [];
+      snapshot.forEach((d) => list.push(d.data() as Employee));
+      try {
+        localStorage.setItem('app_master_employees', JSON.stringify(list));
+      } catch (_) {}
+      return list;
+    }
+  } catch (err) {
+    console.warn('Error fetching employees from Firestore, using fallback:', err);
+  }
+
+  // Fallback to localStorage or defaults
+  try {
+    const cached = localStorage.getItem('app_master_employees');
+    if (cached) return JSON.parse(cached);
+  } catch (_) {}
+
+  return DEFAULT_EMPLOYEES;
+}
+
+/**
+ * Find an employee by NIP (cleans spacing and non-digit characters for matching)
+ */
+export async function findEmployeeByNip(rawNip: string): Promise<Employee | null> {
+  const cleanNip = rawNip.replace(/[^0-9]/g, '').trim();
+  if (!cleanNip) return null;
+
+  // 1. Check local cache first for instant response
+  try {
+    const cached = localStorage.getItem('app_master_employees');
+    if (cached) {
+      const list: Employee[] = JSON.parse(cached);
+      const match = list.find((e) => e.nip.replace(/[^0-9]/g, '') === cleanNip);
+      if (match) return match;
+    }
+  } catch (_) {}
+
+  // 2. Query Firestore by ID (doc ID is often NIP) or by nip field
+  try {
+    const docRef = doc(db, EMPLOYEES_COLLECTION, cleanNip);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data() as Employee;
+    }
+
+    const q = query(
+      collection(db, EMPLOYEES_COLLECTION),
+      where('nip', '==', cleanNip)
+    );
+    const qSnap = await getDocs(q);
+    if (!qSnap.empty) {
+      return qSnap.docs[0].data() as Employee;
+    }
+  } catch (err) {
+    console.warn('Firestore employee search error:', err);
+  }
+
+  // 3. Fallback to default employees
+  const defaultMatch = DEFAULT_EMPLOYEES.find(
+    (e) => e.nip.replace(/[^0-9]/g, '') === cleanNip
+  );
+  return defaultMatch || null;
+}
+
+/**
+ * Save or update a single employee
+ */
+export async function saveEmployee(employee: Employee): Promise<void> {
+  const cleanNip = employee.nip.replace(/[^0-9]/g, '').trim();
+  const id = employee.id || cleanNip;
+  const data: Employee = {
+    ...employee,
+    id,
+    nip: cleanNip,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    await setDoc(doc(db, EMPLOYEES_COLLECTION, id), data);
+  } catch (err) {
+    console.warn('Could not save employee to Firestore, saving locally:', err);
+  }
+
+  // Always update local cache
+  try {
+    const cached = localStorage.getItem('app_master_employees');
+    let list: Employee[] = cached ? JSON.parse(cached) : [...DEFAULT_EMPLOYEES];
+    const idx = list.findIndex((e) => e.id === id || e.nip === cleanNip);
+    if (idx >= 0) {
+      list[idx] = data;
+    } else {
+      list.push(data);
+    }
+    localStorage.setItem('app_master_employees', JSON.stringify(list));
+  } catch (_) {}
+}
+
+/**
+ * Save multiple employees in batch (from Excel / CSV upload)
+ */
+export async function saveBatchEmployees(employees: Employee[]): Promise<number> {
+  if (!employees.length) return 0;
+
+  let savedCount = 0;
+  try {
+    // Firestore writeBatch max is 500 ops per batch
+    const chunks: Employee[][] = [];
+    for (let i = 0; i < employees.length; i += 400) {
+      chunks.push(employees.slice(i, i + 400));
+    }
+
+    for (const chunk of chunks) {
+      const batch = writeBatch(db);
+      chunk.forEach((emp) => {
+        const cleanNip = emp.nip.replace(/[^0-9]/g, '').trim();
+        const id = emp.id || cleanNip;
+        const ref = doc(db, EMPLOYEES_COLLECTION, id);
+        batch.set(ref, {
+          ...emp,
+          id,
+          nip: cleanNip,
+          updatedAt: new Date().toISOString(),
+        });
+      });
+      await batch.commit();
+      savedCount += chunk.length;
+    }
+  } catch (err) {
+    console.warn('Batch Firestore save notice, updating local storage:', err);
+  }
+
+  // Update local cache as well
+  try {
+    const cached = localStorage.getItem('app_master_employees');
+    let list: Employee[] = cached ? JSON.parse(cached) : [];
+    employees.forEach((emp) => {
+      const cleanNip = emp.nip.replace(/[^0-9]/g, '').trim();
+      const id = emp.id || cleanNip;
+      const idx = list.findIndex((e) => e.id === id || e.nip === cleanNip);
+      if (idx >= 0) {
+        list[idx] = { ...emp, id, nip: cleanNip };
+      } else {
+        list.push({ ...emp, id, nip: cleanNip });
+      }
+    });
+    localStorage.setItem('app_master_employees', JSON.stringify(list));
+    if (savedCount === 0) savedCount = employees.length;
+  } catch (_) {}
+
+  return savedCount;
+}
+
+/**
+ * Delete an employee by ID
+ */
+export async function deleteEmployee(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, EMPLOYEES_COLLECTION, id));
+  } catch (err) {
+    console.warn('Could not delete employee from Firestore:', err);
+  }
+
+  // Update local cache
+  try {
+    const cached = localStorage.getItem('app_master_employees');
+    if (cached) {
+      let list: Employee[] = JSON.parse(cached);
+      list = list.filter((e) => e.id !== id && e.nip !== id);
+      localStorage.setItem('app_master_employees', JSON.stringify(list));
+    }
+  } catch (_) {}
 }

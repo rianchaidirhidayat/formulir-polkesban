@@ -14,11 +14,16 @@ import {
   Code,
   ShieldCheck,
   Plus,
+  Users,
+  Lock,
+  KeyRound,
+  ShieldAlert,
 } from 'lucide-react';
 import { FormConfig, WebhookLog } from '../types';
 import { createGoogleSheet, sendEmailViaGmail } from '../services/googleWorkspace';
 import { triggerWebhook } from '../services/webhookService';
 import { ConfirmationModal } from './ConfirmationModal';
+import { EmployeeManager } from './EmployeeManager';
 
 interface IntegrationSettingsProps {
   config: FormConfig;
@@ -41,7 +46,9 @@ export const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({
   onTriggerSyncSheets,
   isSyncingSheets,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'sheets' | 'email' | 'webhook'>('sheets');
+  const [activeSubTab, setActiveSubTab] = useState<
+    'sheets' | 'employees' | 'email' | 'webhook' | 'security'
+  >('sheets');
 
   // Local state for Google Sheets
   const [isCreatingSheet, setIsCreatingSheet] = useState(false);
@@ -58,6 +65,68 @@ export const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
   const [testWebhookStatus, setTestWebhookStatus] = useState<string | null>(null);
   const [hasCopiedKey, setHasCopiedKey] = useState(false);
+
+  // Admin PIN Management state
+  const [currentPin, setCurrentPin] = useState(() => localStorage.getItem('app_admin_pin') || '1234');
+  const [oldPinInput, setOldPinInput] = useState('');
+  const [newPinInput, setNewPinInput] = useState('');
+  const [confirmPinInput, setConfirmPinInput] = useState('');
+  const [pinMessage, setPinMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const handleChangeAdminPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinMessage(null);
+
+    const activeStoredPin = localStorage.getItem('app_admin_pin') || '1234';
+
+    if (oldPinInput !== activeStoredPin) {
+      setPinMessage({
+        text: 'PIN Lama salah. Masukkan PIN yang sedang berlaku saat ini.',
+        type: 'error',
+      });
+      return;
+    }
+
+    if (!newPinInput.trim() || newPinInput.trim().length < 4) {
+      setPinMessage({
+        text: 'PIN Baru harus minimal 4 karakter (angka atau huruf).',
+        type: 'error',
+      });
+      return;
+    }
+
+    if (newPinInput !== confirmPinInput) {
+      setPinMessage({
+        text: 'Konfirmasi PIN Baru tidak cocok dengan PIN Baru.',
+        type: 'error',
+      });
+      return;
+    }
+
+    localStorage.setItem('app_admin_pin', newPinInput.trim());
+    setCurrentPin(newPinInput.trim());
+    setOldPinInput('');
+    setNewPinInput('');
+    setConfirmPinInput('');
+    setPinMessage({
+      text: 'PIN Admin berhasil diubah! Gunakan PIN baru ini untuk membuka akses pengelola.',
+      type: 'success',
+    });
+  };
+
+  const handleResetPinDefault = () => {
+    if (window.confirm('Kembalikan PIN Admin ke standar bawaan (1234)?')) {
+      localStorage.setItem('app_admin_pin', '1234');
+      setCurrentPin('1234');
+      setOldPinInput('');
+      setNewPinInput('');
+      setConfirmPinInput('');
+      setPinMessage({
+        text: 'PIN Admin telah direset kembali ke standar bawaan: 1234',
+        type: 'success',
+      });
+    }
+  };
 
   const sheetsConfig = config.integrations.googleSheets;
   const emailConfig = config.integrations.emailNotifications;
@@ -212,10 +281,10 @@ export const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({
       </div>
 
       {/* Sub tabs */}
-      <div className="flex border-b border-[#E5E2D1] dark:border-[#3B3E32] mb-8">
+      <div className="flex border-b border-[#E5E2D1] dark:border-[#3B3E32] mb-8 overflow-x-auto">
         <button
           onClick={() => setActiveSubTab('sheets')}
-          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 transition-colors cursor-pointer ${
+          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 whitespace-nowrap transition-colors cursor-pointer ${
             activeSubTab === 'sheets'
               ? 'border-[#829273] text-[#637254] dark:text-[#B5C4A6]'
               : 'border-transparent text-[#737766] hover:text-[#3D4035] dark:hover:text-[#E8E6DF]'
@@ -226,8 +295,20 @@ export const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({
         </button>
 
         <button
+          onClick={() => setActiveSubTab('employees')}
+          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 whitespace-nowrap transition-colors cursor-pointer ${
+            activeSubTab === 'employees'
+              ? 'border-[#829273] text-[#637254] dark:text-[#B5C4A6]'
+              : 'border-transparent text-[#737766] hover:text-[#3D4035] dark:hover:text-[#E8E6DF]'
+          }`}
+        >
+          <Users className="w-4 h-4 text-[#829273]" />
+          Database Pegawai (NIP)
+        </button>
+
+        <button
           onClick={() => setActiveSubTab('email')}
-          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 transition-colors cursor-pointer ${
+          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 whitespace-nowrap transition-colors cursor-pointer ${
             activeSubTab === 'email'
               ? 'border-[#829273] text-[#637254] dark:text-[#B5C4A6]'
               : 'border-transparent text-[#737766] hover:text-[#3D4035] dark:hover:text-[#E8E6DF]'
@@ -239,14 +320,26 @@ export const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({
 
         <button
           onClick={() => setActiveSubTab('webhook')}
-          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 transition-colors cursor-pointer ${
+          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 whitespace-nowrap transition-colors cursor-pointer ${
             activeSubTab === 'webhook'
               ? 'border-[#829273] text-[#637254] dark:text-[#B5C4A6]'
               : 'border-transparent text-[#737766] hover:text-[#3D4035] dark:hover:text-[#E8E6DF]'
           }`}
         >
           <Webhook className="w-4 h-4 text-[#829273]" />
-          Webhook & API Pihak Ketiga
+          Webhook & API
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('security')}
+          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 whitespace-nowrap transition-colors cursor-pointer ${
+            activeSubTab === 'security'
+              ? 'border-[#829273] text-[#637254] dark:text-[#B5C4A6]'
+              : 'border-transparent text-[#737766] hover:text-[#3D4035] dark:hover:text-[#E8E6DF]'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 text-[#C97C5D]" />
+          Keamanan & PIN Admin
         </button>
       </div>
 
@@ -636,6 +729,139 @@ export const IntegrationSettings: React.FC<IntegrationSettingsProps> = ({
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: MASTER PEGAWAI (NIP & AUTO-FILL) */}
+      {activeSubTab === 'employees' && (
+        <EmployeeManager />
+      )}
+
+      {/* TAB 5: KEAMANAN & UBAH PIN ADMIN */}
+      {activeSubTab === 'security' && (
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-[#22251F] rounded-2xl p-6 border border-[#E5E2D1] dark:border-[#3B3E32] shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#E5E2D1] dark:border-[#3B3E32]">
+              <div className="flex items-start gap-3">
+                <div className="p-3 rounded-2xl bg-[#C97C5D]/15 text-[#C97C5D]">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-[#3D4035] dark:text-[#E8E6DF]">
+                    Pengaturan Keamanan & PIN Admin Pengelola
+                  </h3>
+                  <p className="text-xs text-[#737766] dark:text-[#A3A796] mt-0.5">
+                    Ubah PIN autentikasi untuk membatasi akses pengeditan form, database hasil respon, dan integrasi hanya untuk Anda.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#829273]/15 text-[#637254] dark:text-[#B5C4A6] border border-[#829273]/30">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Mode Admin Aktif
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-6 max-w-xl space-y-6">
+              {/* Information Box */}
+              <div className="p-4 rounded-xl bg-[#FDFCF8] dark:bg-[#2A2D25] border border-[#E5E2D1] dark:border-[#3B3E32] text-xs space-y-2">
+                <div className="flex items-center gap-2 font-bold text-[#3D4035] dark:text-[#E8E6DF]">
+                  <KeyRound className="w-4 h-4 text-[#829273]" />
+                  <span>Informasi Hak Akses</span>
+                </div>
+                <p className="text-[#737766] dark:text-[#A3A796] leading-relaxed">
+                  Pegawai yang membuka formulir publik tidak akan melihat tombol admin ataupun menu pengeditan. Untuk masuk kembali ke dashboard pengelola, Anda akan diminta memasukkan PIN rahasia ini.
+                </p>
+                <div className="pt-2 text-[11px] font-mono text-[#525746] dark:text-[#CBD5C0]">
+                  PIN Saat Ini: <span className="font-bold tracking-widest">•••• (Tersimpan Aman)</span>
+                </div>
+              </div>
+
+              {/* Form Change PIN */}
+              <form onSubmit={handleChangeAdminPin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF] mb-1.5">
+                    PIN Lama <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={oldPinInput}
+                    onChange={(e) => setOldPinInput(e.target.value)}
+                    placeholder="Masukkan PIN yang sedang aktif"
+                    required
+                    className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-[#E5E2D1] dark:border-[#3B3E32] bg-[#FDFCF8] dark:bg-[#1E201B] text-[#3D4035] dark:text-[#E8E6DF] focus:outline-none focus:ring-2 focus:ring-[#829273]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF] mb-1.5">
+                      PIN Baru <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={newPinInput}
+                      onChange={(e) => setNewPinInput(e.target.value)}
+                      placeholder="Minimal 4 digit/karakter"
+                      required
+                      className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-[#E5E2D1] dark:border-[#3B3E32] bg-[#FDFCF8] dark:bg-[#1E201B] text-[#3D4035] dark:text-[#E8E6DF] focus:outline-none focus:ring-2 focus:ring-[#829273]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF] mb-1.5">
+                      Konfirmasi PIN Baru <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={confirmPinInput}
+                      onChange={(e) => setConfirmPinInput(e.target.value)}
+                      placeholder="Ketik ulang PIN baru"
+                      required
+                      className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-[#E5E2D1] dark:border-[#3B3E32] bg-[#FDFCF8] dark:bg-[#1E201B] text-[#3D4035] dark:text-[#E8E6DF] focus:outline-none focus:ring-2 focus:ring-[#829273]"
+                    />
+                  </div>
+                </div>
+
+                {pinMessage && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-medium flex items-center gap-2 ${
+                      pinMessage.type === 'success'
+                        ? 'bg-[#829273]/15 text-[#637254] dark:text-[#CBD5C0] border border-[#829273]/30'
+                        : 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/50'
+                    }`}
+                  >
+                    {pinMessage.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-[#829273] shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                    )}
+                    <span>{pinMessage.text}</span>
+                  </div>
+                )}
+
+                <div className="pt-2 flex items-center justify-between gap-3">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#829273] hover:bg-[#728263] text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    <span>Simpan Perubahan PIN</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetPinDefault}
+                    className="text-xs text-[#737766] hover:text-[#C97C5D] dark:text-[#A3A796] dark:hover:text-[#E89E82] underline cursor-pointer"
+                  >
+                    Reset ke Standar (1234)
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

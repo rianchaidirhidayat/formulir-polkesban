@@ -7,13 +7,15 @@ export type QuestionType =
   | 'file_upload'
   | 'dropdown'
   | 'date'
-  | 'signature';
+  | 'signature'
+  | 'nip';
 
 export type ValidationType =
   | 'none'
   | 'email'
   | 'phone_id'
   | 'nim_nik'
+  | 'nip'
   | 'number_range'
   | 'regex'
   | 'min_length'
@@ -28,6 +30,7 @@ export interface ValidationRule {
   regexErrorMessage?: string;
   minLength?: number;
   maxLength?: number;
+  exactLength?: number;
   minValue?: number;
   maxValue?: number;
   minCheckbox?: number;
@@ -50,6 +53,26 @@ export interface LinearScaleConfig {
   maxLabel: string; // e.g. "Sangat Baik"
 }
 
+export interface NipAutofillConfig {
+  nameQuestionId?: string;
+  positionQuestionId?: string;
+  unitQuestionId?: string;
+  emailQuestionId?: string;
+  phoneQuestionId?: string;
+}
+
+export interface Employee {
+  id: string; // Unique, usually NIP
+  nip: string; // 18-digit NIP
+  nama: string;
+  jabatan?: string;
+  unitKerja?: string;
+  email?: string;
+  phone?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Question {
   id: string;
   title: string;
@@ -59,6 +82,7 @@ export interface Question {
   validation: ValidationRule;
   conditionalLogic?: ConditionalLogic;
   linearScale?: LinearScaleConfig;
+  nipAutofill?: NipAutofillConfig;
 }
 
 export type NavigationTab =

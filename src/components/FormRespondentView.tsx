@@ -13,6 +13,8 @@ import {
   ExternalLink,
   PenTool,
   Lock,
+  UserCheck,
+  Loader2,
 } from 'lucide-react';
 import {
   FormConfig,
@@ -21,6 +23,7 @@ import {
   FormResponse,
 } from '../types';
 import { SignaturePad } from './SignaturePad';
+import { findEmployeeByNip } from '../services/firestoreService';
 
 interface FormRespondentViewProps {
   config: FormConfig;
@@ -40,6 +43,18 @@ export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedResponse, setSubmittedResponse] = useState<FormResponse | null>(null);
+  const [nipStatus, setNipStatus] = useState<
+    Record<
+      string,
+      {
+        loading: boolean;
+        foundName?: string;
+        foundPosition?: string;
+        foundUnit?: string;
+        notFound?: boolean;
+      }
+    >
+  >({});
 
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -153,6 +168,17 @@ export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
           return rule.regexErrorMessage || 'NIM / NIK harus berupa deret angka 8-16 digit.';
         }
       }
+
+      // NIP Pegawai (18 digit angka)
+      if (q.type === 'nip' || rule.type === 'nip') {
+        const cleanDigits = trimmed.replace(/\D/g, '');
+        if (cleanDigits.length !== 18) {
+          return (
+            rule.regexErrorMessage ||
+            `NIP harus berupa 18 digit angka (saat ini ${cleanDigits.length} digit).`
+          );
+        }
+      }
     }
 
     // Checkboxes count check
@@ -197,6 +223,150 @@ export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
     setTouched((prev) => ({ ...prev, [question.id]: true }));
     const err = validateField(question, answers[question.id]);
     setErrors((prev) => ({ ...prev, [question.id]: err || '' }));
+  };
+
+  const handleNipChange = async (question: Question, rawVal: string) => {
+    handleChange(question, rawVal);
+    const cleanNip = rawVal.replace(/\D/g, '');
+
+    if (cleanNip.length === 18) {
+      setNipStatus((prev) => ({
+        ...prev,
+        [question.id]: { loading: true, notFound: false },
+      }));
+
+      try {
+        const emp = await findEmployeeByNip(cleanNip);
+        if (emp) {
+          const empNama = emp.nama || (emp as any).name || '';
+          const empJabatan = emp.jabatan || (emp as any).position || '';
+          const empUnit = emp.unitKerja || (emp as any).unit || '';
+          const empEmail = emp.email || '';
+          const empPhone = emp.phone || '';
+
+          setNipStatus((prev) => ({
+            ...prev,
+            [question.id]: {
+              loading: false,
+              foundName: empNama,
+              foundPosition: empJabatan,
+              foundUnit: empUnit,
+              notFound: false,
+            },
+          }));
+
+          // Automatically fill other form fields
+          setAnswers((prevAnswers) => {
+            const updated = { ...prevAnswers, [question.id]: rawVal };
+
+            // 1. Configured targets
+            if (question.nipAutofill?.nameQuestionId && empNama) {
+              updated[question.nipAutofill.nameQuestionId] = empNama;
+            }
+            if (question.nipAutofill?.positionQuestionId && empJabatan) {
+              updated[question.nipAutofill.positionQuestionId] = empJabatan;
+            }
+            if (question.nipAutofill?.unitQuestionId && empUnit) {
+              updated[question.nipAutofill.unitQuestionId] = empUnit;
+            }
+            if (question.nipAutofill?.emailQuestionId && empEmail) {
+              updated[question.nipAutofill.emailQuestionId] = empEmail;
+            }
+            if (question.nipAutofill?.phoneQuestionId && empPhone) {
+              updated[question.nipAutofill.phoneQuestionId] = empPhone;
+            }
+
+            // 2. Intelligent fallback: if target questions weren't explicitly mapped, match by title
+            if (!question.nipAutofill?.nameQuestionId && empNama) {
+              const nameQ = config.questions.find(
+                (q) => q.id !== question.id && q.title.toLowerCase().includes('nama')
+              );
+              if (nameQ) updated[nameQ.id] = empNama;
+            }
+
+            if (!question.nipAutofill?.positionQuestionId && empJabatan) {
+              const posQ = config.questions.find(
+                (q) => q.id !== question.id && q.title.toLowerCase().includes('jabatan')
+              );
+              if (posQ) updated[posQ.id] = empJabatan;
+            }
+
+            if (!question.nipAutofill?.unitQuestionId && empUnit) {
+              const unitQ = config.questions.find(
+                (q) =>
+                  q.id !== question.id &&
+                  (q.title.toLowerCase().includes('unit') ||
+                    q.title.toLowerCase().includes('jurusan') ||
+                    q.title.toLowerCase().includes('divisi'))
+              );
+              if (unitQ) updated[unitQ.id] = empUnit;
+            }
+
+            // Also fill email & phone if present
+            if (!question.nipAutofill?.emailQuestionId && empEmail) {
+              const emailQ = config.questions.find(
+                (q) =>
+                  q.id !== question.id &&
+                  (q.title.toLowerCase().includes('email') || q.validation.type === 'email')
+              );
+              if (emailQ) updated[emailQ.id] = empEmail;
+            }
+
+            if (!question.nipAutofill?.phoneQuestionId && empPhone) {
+              const phoneQ = config.questions.find(
+                (q) =>
+                  q.id !== question.id &&
+                  (q.title.toLowerCase().includes('whatsapp') ||
+                    q.title.toLowerCase().includes('telepon') ||
+                    q.validation.type === 'phone_id')
+              );
+              if (phoneQ) updated[phoneQ.id] = empPhone;
+            }
+
+            return updated;
+          });
+
+          // Clear validation errors on autofilled questions
+          setErrors((prev) => {
+            const nextErrors = { ...prev, [question.id]: '' };
+            if (question.nipAutofill?.nameQuestionId) {
+              nextErrors[question.nipAutofill.nameQuestionId] = '';
+            }
+            if (question.nipAutofill?.positionQuestionId) {
+              nextErrors[question.nipAutofill.positionQuestionId] = '';
+            }
+            if (question.nipAutofill?.unitQuestionId) {
+              nextErrors[question.nipAutofill.unitQuestionId] = '';
+            }
+            return nextErrors;
+          });
+        } else {
+          setNipStatus((prev) => ({
+            ...prev,
+            [question.id]: {
+              loading: false,
+              notFound: true,
+            },
+          }));
+        }
+      } catch (err) {
+        console.error('Error looking up NIP:', err);
+        setNipStatus((prev) => ({
+          ...prev,
+          [question.id]: {
+            loading: false,
+            notFound: true,
+          },
+        }));
+      }
+    } else {
+      if (nipStatus[question.id]?.foundName || nipStatus[question.id]?.notFound) {
+        setNipStatus((prev) => ({
+          ...prev,
+          [question.id]: { loading: false, notFound: false },
+        }));
+      }
+    }
   };
 
   const handleCheckboxToggle = (question: Question, option: string) => {
@@ -449,11 +619,96 @@ export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
                   <input
                     type="text"
                     value={currentVal || ''}
-                    onChange={(e) => handleChange(question, e.target.value)}
+                    onChange={(e) => {
+                      if (question.validation.type === 'nip') {
+                        handleNipChange(question, e.target.value);
+                      } else {
+                        handleChange(question, e.target.value);
+                      }
+                    }}
                     onBlur={() => handleBlur(question)}
-                    placeholder="Tuliskan jawaban Anda..."
+                    placeholder={
+                      question.validation.type === 'nip'
+                        ? 'Contoh: 198507152010121002 (18 digit NIP)'
+                        : 'Tuliskan jawaban Anda...'
+                    }
                     className="w-full text-sm sm:text-base px-4 py-3 rounded-xl border border-[#E5E2D1] dark:border-[#3B3E32] bg-[#FDFCF8] dark:bg-[#1E201B] text-[#3D4035] dark:text-[#E8E6DF] focus:outline-none focus:ring-2 focus:ring-[#829273] focus:border-[#829273] transition-all placeholder:text-[#858977]/60"
                   />
+                  {question.validation.type === 'nip' && nipStatus[question.id]?.foundName && (
+                    <div className="mt-2.5 p-3 rounded-xl bg-[#829273]/15 border border-[#829273]/30 text-xs text-[#525746] dark:text-[#CBD5C0] flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-[#829273]" />
+                        <span className="font-bold text-[#3D4035] dark:text-[#E8E6DF]">
+                          {nipStatus[question.id]?.foundName} ({nipStatus[question.id]?.foundPosition})
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold text-[#637254] dark:text-[#B5C4A6] bg-[#829273]/20 px-2 py-0.5 rounded-full">
+                        Auto-fill Aktif
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 10. NIP Khusus Pegawai (18 Digit with Auto-fill) */}
+              {question.type === 'nip' && (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={18}
+                      value={currentVal || ''}
+                      onChange={(e) => handleNipChange(question, e.target.value)}
+                      onBlur={() => handleBlur(question)}
+                      placeholder="Contoh: 198507152010121002 (18 digit)"
+                      className="w-full font-mono tracking-wider text-sm sm:text-base px-4 py-3 rounded-xl border border-[#E5E2D1] dark:border-[#3B3E32] bg-[#FDFCF8] dark:bg-[#1E201B] text-[#3D4035] dark:text-[#E8E6DF] focus:outline-none focus:ring-2 focus:ring-[#829273] focus:border-[#829273] transition-all placeholder:text-[#858977]/60 pr-24"
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                      {nipStatus[question.id]?.loading && (
+                        <Loader2 className="w-4 h-4 text-[#829273] animate-spin" />
+                      )}
+                      <span className="text-[11px] font-mono text-[#737766] dark:text-[#A3A796]">
+                        {String(currentVal || '').replace(/\D/g, '').length}/18
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Auto-fill Found Badge */}
+                  {nipStatus[question.id]?.foundName && (
+                    <div className="p-3 rounded-xl bg-[#829273]/15 border border-[#829273]/30 text-xs text-[#525746] dark:text-[#CBD5C0] flex flex-col sm:flex-row sm:items-center justify-between gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-5 h-5 rounded-full bg-[#829273] text-white flex items-center justify-center shrink-0 mt-0.5">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-[#3D4035] dark:text-[#E8E6DF] text-sm">
+                            {nipStatus[question.id]?.foundName}
+                          </div>
+                          <div className="text-[11px] text-[#737766] dark:text-[#A3A796]">
+                            Jabatan: <span className="font-semibold text-[#525746] dark:text-[#CBD5C0]">{nipStatus[question.id]?.foundPosition}</span>
+                            {nipStatus[question.id]?.foundUnit && (
+                              <span> • {nipStatus[question.id]?.foundUnit}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#637254] dark:text-[#B5C4A6] bg-[#829273]/20 px-2.5 py-1 rounded-full whitespace-nowrap self-start sm:self-auto">
+                        <Sparkles className="w-3 h-3 text-[#829273]" />
+                        Data Terisi Otomatis
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Auto-fill Not Found Notice */}
+                  {nipStatus[question.id]?.notFound && (
+                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2 animate-in fade-in duration-200">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold">NIP belum terdaftar di database master.</span> Anda tetap dapat melanjutkan dengan mengisi nama dan jabatan secara manual di formulir ini.
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

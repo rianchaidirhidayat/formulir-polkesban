@@ -19,6 +19,9 @@ import {
   GitBranch,
   ShieldCheck,
   PenTool,
+  UserCheck,
+  Sparkles,
+  Database,
 } from 'lucide-react';
 import { FormConfig, Question, QuestionType, ValidationRule, ConditionalLogic } from '../types';
 import { FormValidationModal } from './FormValidationModal';
@@ -46,16 +49,38 @@ export const FormEditor: React.FC<FormEditorProps> = ({
 
   const handleAddQuestion = (type: QuestionType = 'short_text') => {
     const newId = 'q_' + Math.random().toString(36).substring(2, 9);
+
+    // Auto-detect existing questions for autofill mapping if adding NIP
+    const autoNameId = config.questions.find((q) =>
+      q.title.toLowerCase().includes('nama')
+    )?.id || '';
+    const autoPosId = config.questions.find((q) =>
+      q.title.toLowerCase().includes('jabatan')
+    )?.id || '';
+    const autoUnitId = config.questions.find((q) =>
+      q.title.toLowerCase().includes('unit') ||
+      q.title.toLowerCase().includes('jurusan') ||
+      q.title.toLowerCase().includes('divisi') ||
+      q.title.toLowerCase().includes('bagian')
+    )?.id || '';
+
+    let questionTitle = 'Pertanyaan Baru';
+    let questionDesc: string | undefined = undefined;
+
+    if (type === 'nip') {
+      questionTitle = 'Nomor Induk Pegawai (NIP)';
+      questionDesc =
+        'Ketik 18 digit NIP Anda. Nama dan Jabatan di bawahnya akan otomatis terisi dari database.';
+    } else if (type === 'signature') {
+      questionTitle = 'Tanda Tangan Digital Responden';
+      questionDesc =
+        'Goreskan tanda tangan digital atau ketik nama Anda sebagai bukti keabsahan';
+    }
+
     const newQuestion: Question = {
       id: newId,
-      title:
-        type === 'signature'
-          ? 'Tanda Tangan Digital Responden'
-          : 'Pertanyaan Baru',
-      description:
-        type === 'signature'
-          ? 'Goreskan tanda tangan digital atau ketik nama Anda sebagai bukti keabsahan'
-          : undefined,
+      title: questionTitle,
+      description: questionDesc,
       type,
       options:
         type === 'multiple_choice' || type === 'checkboxes' || type === 'dropdown'
@@ -71,10 +96,20 @@ export const FormEditor: React.FC<FormEditorProps> = ({
             }
           : undefined,
       validation: {
-        required: type === 'signature' ? true : false,
+        required: type === 'signature' || type === 'nip' ? true : false,
+        type: type === 'nip' ? 'nip' : undefined,
+        exactLength: type === 'nip' ? 18 : undefined,
         maxFileSizeMb: type === 'file_upload' ? 5 : undefined,
         allowedFileTypes: type === 'file_upload' ? ['pdf', 'image'] : undefined,
       },
+      nipAutofill:
+        type === 'nip'
+          ? {
+              nameQuestionId: autoNameId,
+              positionQuestionId: autoPosId,
+              unitQuestionId: autoUnitId,
+            }
+          : undefined,
     };
 
     onChangeConfig({
@@ -156,6 +191,8 @@ export const FormEditor: React.FC<FormEditorProps> = ({
         return <Calendar className="w-4 h-4 text-pink-600" />;
       case 'signature':
         return <PenTool className="w-4 h-4 text-[#829273]" />;
+      case 'nip':
+        return <UserCheck className="w-4 h-4 text-[#829273]" />;
     }
   };
 
@@ -283,7 +320,35 @@ export const FormEditor: React.FC<FormEditorProps> = ({
                           maxLabel: 'Sangat Baik',
                         };
                       }
-                      handleUpdateQuestion(index, { type: newType, options, linearScale });
+                      let validation = question.validation;
+                      let nipAutofill = question.nipAutofill;
+                      if (newType === 'nip') {
+                        validation = {
+                          ...validation,
+                          required: true,
+                          type: 'nip',
+                          exactLength: 18,
+                        };
+                        if (!nipAutofill) {
+                          const autoNameId = config.questions.find((q) =>
+                            q.title.toLowerCase().includes('nama')
+                          )?.id || '';
+                          const autoPosId = config.questions.find((q) =>
+                            q.title.toLowerCase().includes('jabatan')
+                          )?.id || '';
+                          const autoUnitId = config.questions.find((q) =>
+                            q.title.toLowerCase().includes('unit') ||
+                            q.title.toLowerCase().includes('jurusan') ||
+                            q.title.toLowerCase().includes('divisi')
+                          )?.id || '';
+                          nipAutofill = {
+                            nameQuestionId: autoNameId,
+                            positionQuestionId: autoPosId,
+                            unitQuestionId: autoUnitId,
+                          };
+                        }
+                      }
+                      handleUpdateQuestion(index, { type: newType, options, linearScale, validation, nipAutofill });
                     }}
                     className="appearance-none text-xs font-medium pl-8 pr-8 py-2 bg-[#F9F8F4] dark:bg-[#2A2D25] text-[#3D4035] dark:text-[#E8E6DF] border border-[#E5E2D1] dark:border-[#3B3E32] rounded-xl focus:ring-2 focus:ring-[#829273] outline-none cursor-pointer"
                   >
@@ -296,6 +361,7 @@ export const FormEditor: React.FC<FormEditorProps> = ({
                     <option value="dropdown">Menu Dropdown</option>
                     <option value="date">Tanggal</option>
                     <option value="signature">Tanda Tangan Digital</option>
+                    <option value="nip">Nomor Induk Pegawai (NIP Auto-fill)</option>
                   </select>
                   <div className="absolute left-2.5 top-2.5 pointer-events-none">
                     {renderTypeIcon(question.type)}
@@ -493,6 +559,121 @@ export const FormEditor: React.FC<FormEditorProps> = ({
               </div>
             )}
 
+            {/* NIP Auto-fill Question Configuration */}
+            {question.type === 'nip' && (
+              <div className="mt-3 p-4 rounded-xl bg-[#829273]/10 dark:bg-[#829273]/15 border border-[#829273]/30 space-y-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-lg bg-[#829273]/20 text-[#637254] dark:text-[#CBD5C0]">
+                      <UserCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF] flex items-center gap-1.5">
+                        <span>Konfigurasi Auto-fill Data Pegawai (18 Digit NIP)</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-[#829273] text-white font-semibold">
+                          Smart Lookup
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-[#737766] dark:text-[#A3A796]">
+                        Saat pegawai mengetik NIP, sistem otomatis mencari di Database Pegawai dan mengisikan kolom berikut:
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mapping Target Fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#3D4035] dark:text-[#E8E6DF] mb-1">
+                      Auto-fill Nama Pegawai ke:
+                    </label>
+                    <select
+                      value={question.nipAutofill?.nameQuestionId || ''}
+                      onChange={(e) => {
+                        const nipAutofill = {
+                          ...(question.nipAutofill || {}),
+                          nameQuestionId: e.target.value,
+                        };
+                        handleUpdateQuestion(index, { nipAutofill });
+                      }}
+                      className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-[#E5E2D1] dark:border-[#3B3E32] bg-white dark:bg-[#22251F] text-[#3D4035] dark:text-[#E8E6DF] focus:outline-none focus:ring-2 focus:ring-[#829273]"
+                    >
+                      <option value="">-- Pilih Kolom Pertanyaan --</option>
+                      {config.questions
+                        .filter((q) => q.id !== question.id)
+                        .map((q) => (
+                          <option key={q.id} value={q.id}>
+                            {q.title || `Pertanyaan (ID: ${q.id})`}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#3D4035] dark:text-[#E8E6DF] mb-1">
+                      Auto-fill Jabatan Pegawai ke:
+                    </label>
+                    <select
+                      value={question.nipAutofill?.positionQuestionId || ''}
+                      onChange={(e) => {
+                        const nipAutofill = {
+                          ...(question.nipAutofill || {}),
+                          positionQuestionId: e.target.value,
+                        };
+                        handleUpdateQuestion(index, { nipAutofill });
+                      }}
+                      className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-[#E5E2D1] dark:border-[#3B3E32] bg-white dark:bg-[#22251F] text-[#3D4035] dark:text-[#E8E6DF] focus:outline-none focus:ring-2 focus:ring-[#829273]"
+                    >
+                      <option value="">-- Pilih Kolom Pertanyaan --</option>
+                      {config.questions
+                        .filter((q) => q.id !== question.id)
+                        .map((q) => (
+                          <option key={q.id} value={q.id}>
+                            {q.title || `Pertanyaan (ID: ${q.id})`}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#3D4035] dark:text-[#E8E6DF] mb-1">
+                      Auto-fill Unit Kerja / Jurusan ke:
+                    </label>
+                    <select
+                      value={question.nipAutofill?.unitQuestionId || ''}
+                      onChange={(e) => {
+                        const nipAutofill = {
+                          ...(question.nipAutofill || {}),
+                          unitQuestionId: e.target.value,
+                        };
+                        handleUpdateQuestion(index, { nipAutofill });
+                      }}
+                      className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-[#E5E2D1] dark:border-[#3B3E32] bg-white dark:bg-[#22251F] text-[#3D4035] dark:text-[#E8E6DF] focus:outline-none focus:ring-2 focus:ring-[#829273]"
+                    >
+                      <option value="">-- Pilih Kolom Pertanyaan --</option>
+                      {config.questions
+                        .filter((q) => q.id !== question.id)
+                        .map((q) => (
+                          <option key={q.id} value={q.id}>
+                            {q.title || `Pertanyaan (ID: ${q.id})`}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1 text-[11px] text-[#525746] dark:text-[#CBD5C0]">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#829273]" />
+                    <span>Terhubung dengan database pegawai terpusat di tab Integrasi.</span>
+                  </div>
+                  <span className="font-mono text-[10px] text-[#737766] dark:text-[#A3A796]">
+                    Validasi 18 digit angka
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Active Validation & Conditional Badges */}
             <div className="mt-4 pt-3 border-t border-[#E5E2D1] dark:border-[#3B3E32] flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
@@ -630,6 +811,14 @@ export const FormEditor: React.FC<FormEditorProps> = ({
           >
             <PenTool className="w-3.5 h-3.5 text-[#829273]" />
             Tanda Tangan
+          </button>
+          <button
+            type="button"
+            onClick={() => handleAddQuestion('nip')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border border-[#829273] bg-[#829273] text-white hover:bg-[#728263] transition-all font-bold shadow-xs cursor-pointer"
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            NIP Auto-fill
           </button>
         </div>
       </div>
