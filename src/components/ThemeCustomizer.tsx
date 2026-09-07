@@ -1,10 +1,15 @@
 import React from 'react';
-import { Palette, Image as ImageIcon, Type, Sparkles, Check } from 'lucide-react';
+import { Palette, Image as ImageIcon, Type, Sparkles, Check, Save, Loader2, CheckCircle2 } from 'lucide-react';
 import { FormConfig, FormTheme } from '../types';
 
 interface ThemeCustomizerProps {
   config: FormConfig;
   onChangeConfig: (newConfig: FormConfig) => void;
+  onSaveForm?: () => void;
+  isSaving?: boolean;
+  justSaved?: boolean;
+  lastSavedTime?: string | null;
+  hasUnsavedChanges?: boolean;
 }
 
 const PRESET_THEMES: {
@@ -75,6 +80,11 @@ const PRESET_THEMES: {
 export const ThemeCustomizer: React.FC<ThemeCustomizerProps> = ({
   config,
   onChangeConfig,
+  onSaveForm,
+  isSaving = false,
+  justSaved = false,
+  lastSavedTime = null,
+  hasUnsavedChanges = false,
 }) => {
   const currentTheme = config.theme;
 
@@ -98,13 +108,56 @@ export const ThemeCustomizer: React.FC<ThemeCustomizerProps> = ({
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#3D4035] dark:text-[#E8E6DF]">
-          Kustomisasi Tema & Tampilan Visual
-        </h1>
-        <p className="text-sm text-[#737766] dark:text-[#A3A796] mt-1">
-          Pilih palet warna estetis, banner institusi, dan gaya tampilan formulir agar lebih menarik bagi responden.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-[#3D4035] dark:text-[#E8E6DF]">
+            Kustomisasi Tema & Tampilan Visual
+          </h1>
+          <p className="text-sm text-[#737766] dark:text-[#A3A796] mt-1">
+            Pilih palet warna estetis, banner institusi, dan gaya tampilan formulir agar lebih menarik bagi responden.
+          </p>
+        </div>
+
+        {onSaveForm && (
+          <button
+            type="button"
+            onClick={onSaveForm}
+            disabled={isSaving}
+            className={`flex items-center justify-center gap-2 px-5 py-2.5 rounded-full font-bold text-xs shadow-md transition-all cursor-pointer ${
+              justSaved
+                ? 'bg-emerald-600 text-white shadow-emerald-600/25'
+                : hasUnsavedChanges
+                ? 'bg-[#829273] hover:bg-[#728263] text-white ring-2 ring-[#829273]/40 shadow-[#829273]/30'
+                : 'bg-[#829273] hover:bg-[#728263] text-white shadow-[#829273]/20'
+            } disabled:opacity-75`}
+            title={
+              lastSavedTime
+                ? `Terakhir disimpan: ${lastSavedTime}. Klik untuk menerapkan tema ke tampilan live responden.`
+                : 'Simpan perubahan tema ke live responden'
+            }
+          >
+            {isSaving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : justSaved ? (
+              <CheckCircle2 className="w-4 h-4 text-white" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            <span>
+              {isSaving
+                ? 'Menyimpan...'
+                : justSaved
+                ? 'Tema Tersimpan!'
+                : 'Simpan Perubahan Tema'}
+            </span>
+            {hasUnsavedChanges && !isSaving && !justSaved && (
+              <span
+                className="w-2 h-2 rounded-full bg-amber-300 animate-ping"
+                title="Ada perubahan belum disimpan"
+              />
+            )}
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

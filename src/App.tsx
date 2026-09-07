@@ -104,6 +104,12 @@ export default function App() {
   const [isFirestoreConnected, setIsFirestoreConnected] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
+  // Form saving states
+  const [isSavingForm, setIsSavingForm] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
   // Live Toast Notification
   const [toastMessage, setToastMessage] = useState<{
     title: string;
@@ -269,9 +275,50 @@ export default function App() {
 
   const handleUpdateFormConfig = (newConfig: FormConfig) => {
     setFormConfig(newConfig);
+    setHasUnsavedChanges(true);
+    localStorage.setItem('app_form_config', JSON.stringify(newConfig));
     saveFormConfigToFirestore(newConfig).catch((err) =>
       console.warn('Firestore config save notice:', err)
     );
+  };
+
+  const handleManualSave = async () => {
+    setIsSavingForm(true);
+    try {
+      localStorage.setItem('app_form_config', JSON.stringify(formConfig));
+      await saveFormConfigToFirestore(formConfig);
+      const timeStr = new Date().toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+      setLastSavedTime(timeStr);
+      setHasUnsavedChanges(false);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 3500);
+      setToastMessage({
+        title: 'Perubahan Berhasil Disimpan!',
+        description: `Formulir telah disimpan & disinkronkan ke live responden (${timeStr}). Tampilan pegawai kini telah diperbarui.`,
+        type: 'success',
+      });
+    } catch (err: any) {
+      console.warn('Manual save warning:', err);
+      const timeStr = new Date().toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      setLastSavedTime(timeStr);
+      setHasUnsavedChanges(false);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 3500);
+      setToastMessage({
+        title: 'Perubahan Disimpan di Browser',
+        description: 'Perubahan formulir berhasil disimpan dan akan otomatis disinkronkan ke cloud saat koneksi stabil.',
+        type: 'info',
+      });
+    } finally {
+      setIsSavingForm(false);
+    }
   };
 
   const handleToggleDarkMode = () => {
@@ -577,6 +624,11 @@ export default function App() {
         isRespondentMode={isRespondentMode}
         onSwitchToAdmin={handleSwitchToAdmin}
         onLockToRespondent={handleLockToRespondent}
+        onSaveForm={handleManualSave}
+        isSaving={isSavingForm}
+        justSaved={justSaved}
+        lastSavedTime={lastSavedTime}
+        hasUnsavedChanges={hasUnsavedChanges}
       />
 
       {/* Main View Area */}
@@ -595,6 +647,11 @@ export default function App() {
             config={formConfig}
             onChangeConfig={handleUpdateFormConfig}
             onPreviewForm={() => setActiveTab('respondent')}
+            onSaveForm={handleManualSave}
+            isSaving={isSavingForm}
+            justSaved={justSaved}
+            lastSavedTime={lastSavedTime}
+            hasUnsavedChanges={hasUnsavedChanges}
           />
         )}
 
@@ -609,7 +666,15 @@ export default function App() {
         )}
 
         {activeTab === 'theme' && (
-          <ThemeCustomizer config={formConfig} onChangeConfig={handleUpdateFormConfig} />
+          <ThemeCustomizer
+            config={formConfig}
+            onChangeConfig={handleUpdateFormConfig}
+            onSaveForm={handleManualSave}
+            isSaving={isSavingForm}
+            justSaved={justSaved}
+            lastSavedTime={lastSavedTime}
+            hasUnsavedChanges={hasUnsavedChanges}
+          />
         )}
 
         {activeTab === 'integrations' && (

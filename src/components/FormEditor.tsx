@@ -22,6 +22,9 @@ import {
   UserCheck,
   Sparkles,
   Database,
+  Save,
+  Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 import { FormConfig, Question, QuestionType, ValidationRule, ConditionalLogic } from '../types';
 import { FormValidationModal } from './FormValidationModal';
@@ -30,12 +33,22 @@ interface FormEditorProps {
   config: FormConfig;
   onChangeConfig: (newConfig: FormConfig) => void;
   onPreviewForm: () => void;
+  onSaveForm?: () => void;
+  isSaving?: boolean;
+  justSaved?: boolean;
+  lastSavedTime?: string | null;
+  hasUnsavedChanges?: boolean;
 }
 
 export const FormEditor: React.FC<FormEditorProps> = ({
   config,
   onChangeConfig,
   onPreviewForm,
+  onSaveForm,
+  isSaving = false,
+  justSaved = false,
+  lastSavedTime = null,
+  hasUnsavedChanges = false,
 }) => {
   const [selectedQuestionForModal, setSelectedQuestionForModal] = useState<Question | null>(null);
 
@@ -209,13 +222,57 @@ export const FormEditor: React.FC<FormEditorProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={onPreviewForm}
-          className="flex items-center justify-center gap-2 px-6 py-2.5 bg-[#C97C5D] hover:bg-[#B66E50] text-white rounded-full font-semibold text-xs shadow-lg shadow-[#C97C5D]/20 transition-all cursor-pointer"
-        >
-          <Eye className="w-4 h-4" />
-          Pratinjau & Isi Formulir
-        </button>
+        <div className="flex items-center flex-wrap gap-2.5">
+          {onSaveForm && (
+            <button
+              type="button"
+              onClick={onSaveForm}
+              disabled={isSaving}
+              className={`flex items-center justify-center gap-2 px-5 py-2.5 rounded-full font-bold text-xs shadow-md transition-all cursor-pointer ${
+                justSaved
+                  ? 'bg-emerald-600 text-white shadow-emerald-600/25'
+                  : hasUnsavedChanges
+                  ? 'bg-[#829273] hover:bg-[#728263] text-white ring-2 ring-[#829273]/40 shadow-[#829273]/30'
+                  : 'bg-[#829273] hover:bg-[#728263] text-white shadow-[#829273]/20'
+              } disabled:opacity-75`}
+              title={
+                lastSavedTime
+                  ? `Terakhir disimpan: ${lastSavedTime}. Klik untuk menyimpan ke database cloud & live responden.`
+                  : 'Simpan konfigurasi ke cloud agar langsung diterapkan di tampilan responden'
+              }
+            >
+              {isSaving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : justSaved ? (
+                <CheckCircle2 className="w-4 h-4 text-white" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              <span>
+                {isSaving
+                  ? 'Menyimpan...'
+                  : justSaved
+                  ? 'Perubahan Tersimpan!'
+                  : 'Simpan Perubahan'}
+              </span>
+              {hasUnsavedChanges && !isSaving && !justSaved && (
+                <span
+                  className="w-2 h-2 rounded-full bg-amber-300 animate-ping"
+                  title="Ada perubahan belum disimpan"
+                />
+              )}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onPreviewForm}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#C97C5D] hover:bg-[#B66E50] text-white rounded-full font-semibold text-xs shadow-md shadow-[#C97C5D]/20 transition-all cursor-pointer"
+          >
+            <Eye className="w-4 h-4" />
+            <span>Lihat Tampilan Responden</span>
+          </button>
+        </div>
       </div>
 
       {/* Header Card / Title Banner */}

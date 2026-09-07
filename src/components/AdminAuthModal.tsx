@@ -135,7 +135,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                 </p>
               )}
               <p className="text-[11px] text-[#737766] dark:text-[#A3A796] mt-1.5 text-center">
-                PIN default awal: <span className="font-mono font-bold text-[#829273]">1234</span>
+                PIN : informasi PIN hubungi Tim Kerja OSDM
               </p>
             </div>
 

@@ -15,6 +15,8 @@ import {
   Share2,
   Database,
   Lock,
+  Save,
+  Loader2,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { NavigationTab } from '../types';
@@ -44,6 +46,11 @@ interface HeaderProps {
   isRespondentMode?: boolean;
   onSwitchToAdmin?: () => void;
   onLockToRespondent?: () => void;
+  onSaveForm?: () => void;
+  isSaving?: boolean;
+  justSaved?: boolean;
+  lastSavedTime?: string | null;
+  hasUnsavedChanges?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -69,6 +76,11 @@ export const Header: React.FC<HeaderProps> = ({
   isRespondentMode = false,
   onSwitchToAdmin,
   onLockToRespondent,
+  onSaveForm,
+  isSaving = false,
+  justSaved = false,
+  lastSavedTime = null,
+  hasUnsavedChanges = false,
 }) => {
   const currentDarkMode = isDarkMode !== undefined ? isDarkMode : Boolean(darkMode);
   const handleToggleDark = () => {
@@ -212,6 +224,48 @@ export const Header: React.FC<HeaderProps> = ({
                 {isFirestoreConnected ? 'Firestore Real-time' : 'Menghubungkan...'}
               </span>
             </div>
+
+            {/* Tombol Simpan Perubahan (Admin Mode) */}
+            {!isRespondentMode && onSaveForm && (
+              <button
+                type="button"
+                onClick={onSaveForm}
+                disabled={isSaving}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer ${
+                  justSaved
+                    ? 'bg-emerald-600 text-white shadow-emerald-600/20'
+                    : hasUnsavedChanges
+                    ? 'bg-[#829273] hover:bg-[#728263] text-white ring-2 ring-[#829273]/50 shadow-[#829273]/30'
+                    : 'bg-[#829273] hover:bg-[#728263] text-white shadow-xs'
+                } disabled:opacity-75`}
+                title={
+                  lastSavedTime
+                    ? `Terakhir disimpan: ${lastSavedTime}. Klik untuk menyimpan & menyinkronkan ke responden.`
+                    : 'Simpan perubahan formulir agar live ke responden'
+                }
+              >
+                {isSaving ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : justSaved ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {isSaving
+                    ? 'Menyimpan...'
+                    : justSaved
+                    ? 'Tersimpan'
+                    : 'Simpan'}
+                </span>
+                {hasUnsavedChanges && !isSaving && !justSaved && (
+                  <span
+                    className="w-2 h-2 rounded-full bg-amber-300 animate-ping"
+                    title="Ada perubahan belum disimpan"
+                  />
+                )}
+              </button>
+            )}
 
             {/* Share Form Button (Only in Admin Mode) */}
             {!isRespondentMode && onShareForm && (
