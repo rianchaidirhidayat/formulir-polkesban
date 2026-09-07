@@ -43,6 +43,7 @@ interface HeaderProps {
   onShareForm?: () => void;
   isRespondentMode?: boolean;
   onSwitchToAdmin?: () => void;
+  onLockToRespondent?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -67,6 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
   onShareForm,
   isRespondentMode = false,
   onSwitchToAdmin,
+  onLockToRespondent,
 }) => {
   const currentDarkMode = isDarkMode !== undefined ? isDarkMode : Boolean(darkMode);
   const handleToggleDark = () => {
@@ -224,6 +226,19 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
+            {/* Lock / Switch to Respondent Mode Button (Only in Admin Mode) */}
+            {!isRespondentMode && onLockToRespondent && (
+              <button
+                type="button"
+                onClick={onLockToRespondent}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/30 rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                title="Kunci tampilan ke Mode Responden (seperti tampilan pegawai)"
+              >
+                <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                <span className="hidden lg:inline">Mode Responden</span>
+              </button>
+            )}
+
             {/* Dark Mode Toggle */}
             <button
               onClick={handleToggleDark}
@@ -310,20 +325,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="sm:hidden">Login</span>
                 </button>
               )
-            ) : (
-              /* Discreet Admin Access for Form Creator */
-              onSwitchToAdmin && (
-                <button
-                  type="button"
-                  onClick={onSwitchToAdmin}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-[#737766] dark:text-[#A3A796] hover:text-[#3D4035] dark:hover:text-[#E8E6DF] hover:bg-[#F4F2E9] dark:hover:bg-[#2A2D25] border border-transparent hover:border-[#E5E2D1] dark:hover:border-[#3B3E32] transition-all cursor-pointer"
-                  title="Akses Pengelola Formulir (Admin)"
-                >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Akses Admin</span>
-                </button>
-              )
-            )}
+            ) : null}
           </div>
         </div>
 

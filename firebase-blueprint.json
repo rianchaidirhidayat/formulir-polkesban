@@ -79,6 +79,42 @@
         }
       },
       "required": ["id", "formId", "submittedAt"]
+    },
+    "Employee": {
+      "title": "Employee",
+      "description": "Master data pegawai for NIP lookup and auto-fill",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier, usually NIP"
+        },
+        "nip": {
+          "type": "string",
+          "description": "Nomor Induk Pegawai (NIP)"
+        },
+        "nama": {
+          "type": "string",
+          "description": "Nama lengkap pegawai beserta gelar"
+        },
+        "jabatan": {
+          "type": "string",
+          "description": "Jabatan fungsional atau struktural"
+        },
+        "unitKerja": {
+          "type": "string",
+          "description": "Unit kerja, divisi, atau jurusan"
+        },
+        "email": {
+          "type": "string",
+          "description": "Alamat email resmi pegawai"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Nomor kontak atau WhatsApp"
+        }
+      },
+      "required": ["id", "nip", "nama"]
     }
   },
   "firestore": {
@@ -89,6 +125,10 @@
     "/responses/{responseId}": {
       "schema": "Response",
       "description": "Stores form responses submitted by employees"
+    },
+    "/employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Stores master employee directory for auto-populating form fields via NIP"
     }
   }
 }

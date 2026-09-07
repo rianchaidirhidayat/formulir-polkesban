@@ -12,6 +12,7 @@ import {
   Sparkles,
   ExternalLink,
   PenTool,
+  Lock,
 } from 'lucide-react';
 import {
   FormConfig,
@@ -25,12 +26,14 @@ interface FormRespondentViewProps {
   config: FormConfig;
   onSubmit: (responseAnswers: Record<string, any>) => Promise<FormResponse>;
   onBackToEditor?: () => void;
+  onSwitchToAdmin?: () => void;
 }
 
 export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
   config,
   onSubmit,
   onBackToEditor,
+  onSwitchToAdmin,
 }) => {
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -719,6 +722,22 @@ export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
               </>
             )}
           </button>
+        </div>
+
+        {/* Subtle Footer with Discreet Admin Entry */}
+        <div className="pt-6 pb-4 border-t border-[#E5E2D1]/60 dark:border-[#3B3E32]/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-[#737766] dark:text-[#A3A796]">
+          <span>Portal Resmi Pengisian Formulir • Sistem Layanan Terpadu</span>
+          {onSwitchToAdmin && (
+            <button
+              type="button"
+              onClick={onSwitchToAdmin}
+              className="inline-flex items-center gap-1.5 text-[#737766] hover:text-[#3D4035] dark:text-[#A3A796] dark:hover:text-white opacity-40 hover:opacity-100 transition-opacity cursor-pointer"
+              title="Akses Pengelola Formulir (Admin)"
+            >
+              <Lock className="w-3 h-3" />
+              <span>Akses Pengelola</span>
+            </button>
+          )}
         </div>
       </form>
     </div>

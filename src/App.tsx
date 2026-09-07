@@ -28,20 +28,31 @@ import { ShareModal } from './components/ShareModal';
 import { AdminAuthModal } from './components/AdminAuthModal';
 import { Bell, CheckCircle2, AlertCircle, Sparkles, X, Database } from 'lucide-react';
 
-// Helper to detect locked respondent mode from query params
+// Helper to detect locked respondent mode from query params and session auth
+// Default is ALWAYS locked respondent mode for maximum data security!
 const checkIsRespondentMode = (): boolean => {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return true;
   const searchParams = new URLSearchParams(window.location.search);
   const view = searchParams.get('view');
   const mode = searchParams.get('mode');
+
+  // If explicitly forced respondent view
   if (view === 'form' || view === 'respondent' || mode === 'respondent' || mode === 'form') {
     return true;
   }
-  return false;
+
+  // If user is already authenticated as admin in this browser session
+  const isAdminAuthenticated = sessionStorage.getItem('app_admin_auth') === 'true';
+  if (isAdminAuthenticated) {
+    return false;
+  }
+
+  // DEFAULT FOR ANYONE OPENING THE APP: ALWAYS LOCKED RESPONDENT MODE!
+  return true;
 };
 
 export default function App() {
-  // Mode Responden: Dikunci saat link publik ?view=form dibagikan ke pegawai
+  // Mode Responden: Terkunci secara default agar pegawai tidak dapat melihat menu admin
   const [isRespondentMode, setIsRespondentMode] = useState<boolean>(() => checkIsRespondentMode());
   const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
 
@@ -154,11 +165,31 @@ export default function App() {
     }
   }, [isRespondentMode]);
 
+  // Check on initial load if admin view was explicitly opened (?view=admin or ?admin=true)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const view = searchParams.get('view');
+      const mode = searchParams.get('mode');
+      const admin = searchParams.get('admin');
+      if (view === 'admin' || mode === 'admin' || admin === 'true') {
+        const isAdminAuthenticated = sessionStorage.getItem('app_admin_auth') === 'true';
+        if (!isAdminAuthenticated) {
+          setIsAdminAuthModalOpen(true);
+        } else {
+          setIsRespondentMode(false);
+          setActiveTab('editor');
+        }
+      }
+    }
+  }, []);
+
   const handleSwitchToAdmin = () => {
     setIsAdminAuthModalOpen(true);
   };
 
   const handleAdminUnlockSuccess = () => {
+    sessionStorage.setItem('app_admin_auth', 'true');
     setIsRespondentMode(false);
     setActiveTab('editor');
     if (typeof window !== 'undefined') {
@@ -167,23 +198,26 @@ export default function App() {
       window.history.pushState({}, '', url.toString());
     }
     setToastMessage({
-      title: 'Mode Admin Aktif',
-      description: 'Menu Builder, Analytics, Tema, dan Integrasi telah dibuka.',
+      title: 'Akses Admin Terbuka',
+      description: 'Menu Builder, Analitik, Tema, dan Integrasi telah aktif.',
       type: 'success',
     });
   };
 
-  const handlePreviewRespondent = () => {
+  const handleLockToRespondent = () => {
+    sessionStorage.removeItem('app_admin_auth');
     setIsRespondentMode(true);
     setActiveTab('respondent');
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
-      url.searchParams.set('view', 'form');
-      window.history.pushState({}, '', url.toString());
+      url.searchParams.delete('view');
+      url.searchParams.delete('mode');
+      url.searchParams.delete('admin');
+      window.history.pushState({}, '', url.pathname);
     }
     setToastMessage({
-      title: 'Mode Responden Terkunci',
-      description: 'Menu Builder, Analytics, Integrasi, dan Themes disembunyikan. Pegawai hanya dapat mengisi data.',
+      title: 'Mode Pegawai Aktif (Terkunci)',
+      description: 'Menu Builder, Analytics, Integrasi, dan Themes disembunyikan total.',
       type: 'info',
     });
   };
@@ -542,6 +576,7 @@ export default function App() {
         onShareForm={() => setIsShareModalOpen(true)}
         isRespondentMode={isRespondentMode}
         onSwitchToAdmin={handleSwitchToAdmin}
+        onLockToRespondent={handleLockToRespondent}
       />
 
       {/* Main View Area */}
@@ -551,6 +586,7 @@ export default function App() {
             config={formConfig}
             onSubmit={handleSubmitForm}
             onBackToEditor={isRespondentMode ? undefined : () => setActiveTab('editor')}
+            onSwitchToAdmin={handleSwitchToAdmin}
           />
         )}
 
@@ -596,7 +632,7 @@ export default function App() {
         onClose={() => setIsShareModalOpen(false)}
         formTitle={formConfig.title}
         isFirestoreConnected={isFirestoreConnected}
-        onPreviewRespondentMode={handlePreviewRespondent}
+        onPreviewRespondentMode={handleLockToRespondent}
       />
 
       {/* Admin Unlock Modal */}
