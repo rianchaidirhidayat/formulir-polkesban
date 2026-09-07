@@ -17,6 +17,13 @@ export const DEFAULT_FORM_CONFIG: FormConfig = {
     fontFamily: 'sans',
     cardRadius: 'rounded-2xl',
     cardBorder: true,
+    brandName: 'FormPro AI',
+    brandTagline: 'Natural Tones',
+    showBrandTagline: true,
+    logoText: 'F',
+    density: 'compact',
+    layoutMode: 'auto',
+    showQuestionNumbers: false,
   },
   integrations: {
     googleSheets: {

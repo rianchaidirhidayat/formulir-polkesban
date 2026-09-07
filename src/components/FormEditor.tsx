@@ -25,8 +25,11 @@ import {
   Save,
   Loader2,
   CheckCircle2,
+  HeartPulse,
+  Activity,
+  Columns,
 } from 'lucide-react';
-import { FormConfig, Question, QuestionType, ValidationRule, ConditionalLogic } from '../types';
+import { FormConfig, Question, QuestionType, ValidationRule, ConditionalLogic, HealthMetricType } from '../types';
 import { FormValidationModal } from './FormValidationModal';
 
 interface FormEditorProps {
@@ -88,6 +91,13 @@ export const FormEditor: React.FC<FormEditorProps> = ({
       questionTitle = 'Tanda Tangan Digital Responden';
       questionDesc =
         'Goreskan tanda tangan digital atau ketik nama Anda sebagai bukti keabsahan';
+    } else if (type === 'health_checkup') {
+      questionTitle = 'Pemeriksaan Kesehatan Fisik & Laboratorium';
+      questionDesc =
+        'Isikan data pemeriksaan kesehatan lengkap (Tinggi Badan, Berat Badan, Tekanan Darah, Lingkar Pinggang, Kolesterol, dan Gula Darah). Nilai BMI dihitung otomatis.';
+    } else if (type === 'health_metric') {
+      questionTitle = 'Pemeriksaan Tekanan Darah';
+      questionDesc = 'Masukkan hasil pemeriksaan tekanan darah (format Sistol/Diastol)';
     }
 
     const newQuestion: Question = {
@@ -95,6 +105,14 @@ export const FormEditor: React.FC<FormEditorProps> = ({
       title: questionTitle,
       description: questionDesc,
       type,
+      layoutWidth: type === 'health_metric' ? 'half' : 'full',
+      healthMetric:
+        type === 'health_metric'
+          ? {
+              metricType: 'blood_pressure',
+              unit: 'mmHg',
+            }
+          : undefined,
       options:
         type === 'multiple_choice' || type === 'checkboxes' || type === 'dropdown'
           ? ['Pilihan 1', 'Pilihan 2', 'Pilihan 3']
@@ -206,6 +224,10 @@ export const FormEditor: React.FC<FormEditorProps> = ({
         return <PenTool className="w-4 h-4 text-[#829273]" />;
       case 'nip':
         return <UserCheck className="w-4 h-4 text-[#829273]" />;
+      case 'health_checkup':
+        return <HeartPulse className="w-4 h-4 text-emerald-600" />;
+      case 'health_metric':
+        return <Activity className="w-4 h-4 text-teal-600" />;
     }
   };
 
@@ -352,8 +374,27 @@ export const FormEditor: React.FC<FormEditorProps> = ({
                 />
               </div>
 
-              {/* Question Type Selector */}
-              <div className="flex items-center gap-2">
+              {/* Question Type Selector & Layout Width */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Layout Width (Fleksibilitas Tata Letak) */}
+                <div className="relative">
+                  <select
+                    value={question.layoutWidth || (question.type === 'health_metric' ? 'half' : 'full')}
+                    onChange={(e) =>
+                      handleUpdateQuestion(index, {
+                        layoutWidth: e.target.value as any,
+                      })
+                    }
+                    title="Tata Letak Kolom (Hemat Tempat / Fleksibilitas)"
+                    className="text-xs font-semibold py-2 px-2.5 bg-[#F9F8F4] dark:bg-[#2A2D25] text-[#3D4035] dark:text-[#E8E6DF] border border-[#E5E2D1] dark:border-[#3B3E32] rounded-xl focus:ring-2 focus:ring-[#829273] outline-none cursor-pointer"
+                  >
+                    <option value="full">100% (Lebar Penuh)</option>
+                    <option value="half">50% (2 Kolom Sejajar - Hemat Ruang)</option>
+                    <option value="third">33% (3 Kolom Sejajar)</option>
+                    <option value="two_thirds">67% (Dua Pertiga)</option>
+                  </select>
+                </div>
+
                 <div className="relative">
                   <select
                     value={question.type}
@@ -379,6 +420,19 @@ export const FormEditor: React.FC<FormEditorProps> = ({
                       }
                       let validation = question.validation;
                       let nipAutofill = question.nipAutofill;
+                      let healthMetric = question.healthMetric;
+                      let layoutWidth = question.layoutWidth;
+
+                      if (newType === 'health_metric') {
+                        layoutWidth = layoutWidth || 'half';
+                        if (!healthMetric) {
+                          healthMetric = {
+                            metricType: 'blood_pressure',
+                            unit: 'mmHg',
+                          };
+                        }
+                      }
+
                       if (newType === 'nip') {
                         validation = {
                           ...validation,
@@ -405,7 +459,15 @@ export const FormEditor: React.FC<FormEditorProps> = ({
                           };
                         }
                       }
-                      handleUpdateQuestion(index, { type: newType, options, linearScale, validation, nipAutofill });
+                      handleUpdateQuestion(index, {
+                        type: newType,
+                        options,
+                        linearScale,
+                        validation,
+                        nipAutofill,
+                        healthMetric,
+                        layoutWidth,
+                      });
                     }}
                     className="appearance-none text-xs font-medium pl-8 pr-8 py-2 bg-[#F9F8F4] dark:bg-[#2A2D25] text-[#3D4035] dark:text-[#E8E6DF] border border-[#E5E2D1] dark:border-[#3B3E32] rounded-xl focus:ring-2 focus:ring-[#829273] outline-none cursor-pointer"
                   >
@@ -419,6 +481,8 @@ export const FormEditor: React.FC<FormEditorProps> = ({
                     <option value="date">Tanggal</option>
                     <option value="signature">Tanda Tangan Digital</option>
                     <option value="nip">Nomor Induk Pegawai (NIP Auto-fill)</option>
+                    <option value="health_checkup">🩺 Pemeriksaan Kesehatan (Paket 6 Parameter)</option>
+                    <option value="health_metric">📏 Parameter Kesehatan Tunggal (dengan Satuan)</option>
                   </select>
                   <div className="absolute left-2.5 top-2.5 pointer-events-none">
                     {renderTypeIcon(question.type)}

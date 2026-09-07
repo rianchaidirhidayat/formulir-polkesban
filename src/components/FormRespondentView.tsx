@@ -15,21 +15,32 @@ import {
   Lock,
   UserCheck,
   Loader2,
+  Building2,
+  Sliders,
+  Minimize2,
+  Maximize2,
+  HeartPulse,
 } from 'lucide-react';
 import {
   FormConfig,
   Question,
   UploadedFileMeta,
   FormResponse,
+  FormDensity,
 } from '../types';
 import { SignaturePad } from './SignaturePad';
 import { findEmployeeByNip } from '../services/firestoreService';
+import {
+  SingleHealthMetricInput,
+  HealthCheckupPanel,
+} from './HealthCheckupFields';
 
 interface FormRespondentViewProps {
   config: FormConfig;
   onSubmit: (responseAnswers: Record<string, any>) => Promise<FormResponse>;
   onBackToEditor?: () => void;
   onSwitchToAdmin?: () => void;
+  onOpenBranding?: () => void;
 }
 
 export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
@@ -37,12 +48,14 @@ export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
   onSubmit,
   onBackToEditor,
   onSwitchToAdmin,
+  onOpenBranding,
 }) => {
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedResponse, setSubmittedResponse] = useState<FormResponse | null>(null);
+  const [activeDensity, setActiveDensity] = useState<FormDensity>(config.theme.density || 'compact');
   const [nipStatus, setNipStatus] = useState<
     Record<
       string,
@@ -55,6 +68,31 @@ export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
       }
     >
   >({});
+
+  const isCompact = activeDensity === 'compact';
+
+  // Helper for responsive grid layout width
+  const getColSpanClass = (q: Question): string => {
+    if (config.theme.layoutMode === 'single') return 'col-span-1 md:col-span-12';
+    if (config.theme.layoutMode === 'grid') {
+      if (
+        q.type === 'long_text' ||
+        q.type === 'health_checkup' ||
+        q.type === 'file_upload' ||
+        q.type === 'signature'
+      ) {
+        return 'col-span-1 md:col-span-12';
+      }
+      return 'col-span-1 md:col-span-6';
+    }
+    // Auto mode
+    if (q.layoutWidth === 'half') return 'col-span-1 md:col-span-6';
+    if (q.layoutWidth === 'third') return 'col-span-1 md:col-span-4';
+    if (q.layoutWidth === 'two_thirds') return 'col-span-1 md:col-span-8';
+    if (q.layoutWidth === 'full') return 'col-span-1 md:col-span-12';
+    if (q.type === 'health_metric') return 'col-span-1 md:col-span-6';
+    return 'col-span-1 md:col-span-12';
+  };
 
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -536,12 +574,76 @@ export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
   }
 
   return (
-    <div className="max-w-3xl mx-auto py-8 px-4 sm:px-6">
-      <form onSubmit={handleSubmit} className="space-y-6">
+    <div className={`mx-auto ${isCompact ? 'max-w-4xl py-5 px-3 sm:px-6' : 'max-w-3xl py-8 px-4 sm:px-6'}`}>
+      <form onSubmit={handleSubmit} className={isCompact ? 'space-y-4' : 'space-y-6'}>
+        {/* Top Branding & Density Toolbar */}
+        <div className="flex items-center justify-between gap-2 px-1 text-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {config.theme.logoUrl ? (
+              <div className="w-7 h-7 rounded-lg overflow-hidden bg-white border border-[#E5E2D1] dark:border-[#3B3E32] flex items-center justify-center p-0.5 flex-shrink-0 shadow-2xs">
+                <img
+                  src={config.theme.logoUrl}
+                  alt={config.theme.brandName || 'Logo'}
+                  className="w-full h-full object-contain"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            ) : (
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-xs flex-shrink-0 uppercase shadow-2xs"
+                style={{ backgroundColor: config.theme.primaryColor || '#829273' }}
+              >
+                {config.theme.logoText || (config.theme.brandName ? config.theme.brandName.charAt(0) : 'F')}
+              </div>
+            )}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="font-bold text-[#3D4035] dark:text-[#E8E6DF] truncate text-xs sm:text-sm">
+                {config.theme.brandName || 'FormPro AI'}
+              </span>
+              {config.theme.showBrandTagline !== false && config.theme.brandTagline && (
+                <span className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-semibold rounded-full bg-[#829273]/15 text-[#637254] dark:bg-[#829273]/25 dark:text-[#B5C4A6]">
+                  {config.theme.brandTagline}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Density Switcher */}
+          <div className="flex items-center gap-1 bg-white dark:bg-[#22251F] p-1 rounded-xl border border-[#E5E2D1] dark:border-[#3B3E32] shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setActiveDensity('compact')}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                isCompact
+                  ? 'bg-[#829273] text-white shadow-2xs'
+                  : 'text-[#737766] hover:text-[#3D4035] dark:text-[#A3A796]'
+              }`}
+              title="Tampilan ringkas & hemat ruang"
+            >
+              <Minimize2 className="w-3 h-3" />
+              <span className="hidden sm:inline">Ringkas (Hemat Ruang)</span>
+              <span className="sm:hidden">Ringkas</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveDensity('comfortable')}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                !isCompact
+                  ? 'bg-[#829273] text-white shadow-2xs'
+                  : 'text-[#737766] hover:text-[#3D4035] dark:text-[#A3A796]'
+              }`}
+              title="Tampilan standar"
+            >
+              <Sliders className="w-3 h-3" />
+              <span>Standar</span>
+            </button>
+          </div>
+        </div>
+
         {/* Header Title Card */}
         <div className="bg-white dark:bg-[#22251F] rounded-2xl shadow-sm border border-[#E5E2D1] dark:border-[#3B3E32] overflow-hidden">
           {config.theme.bannerImage && (
-            <div className="h-40 sm:h-52 w-full overflow-hidden relative">
+            <div className={`w-full overflow-hidden relative ${isCompact ? 'h-24 sm:h-36' : 'h-40 sm:h-52'}`}>
               <img
                 src={config.theme.bannerImage}
                 alt="Form Banner"
@@ -552,65 +654,84 @@ export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
             </div>
           )}
 
-          <div className="p-6 sm:p-8 border-t-4 border-[#829273]">
-            <div className="mb-2">
+          <div
+            className={`border-t-4 border-[#829273] ${
+              isCompact ? 'p-4 sm:p-5' : 'p-6 sm:p-8'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2 mb-1.5">
               <span className="text-xs font-bold text-[#829273] tracking-widest uppercase">
-                Form Overview
+                {config.theme.brandName || 'Formulir Resmi'}
+              </span>
+              <span className="text-[11px] text-[#C97C5D] font-semibold">
+                * Wajib diisi
               </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-[#3D4035] dark:text-[#E8E6DF] leading-tight">
+
+            <h1 className={`font-bold text-[#3D4035] dark:text-[#E8E6DF] leading-tight ${
+              isCompact ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl'
+            }`}>
               {config.title}
             </h1>
-            <p className="mt-3 text-sm sm:text-base text-[#737766] dark:text-[#A3A796] leading-relaxed whitespace-pre-line">
-              {config.description}
-            </p>
 
-            <div className="mt-5 pt-4 border-t border-[#E5E2D1] dark:border-[#3B3E32] flex items-center justify-between text-xs text-[#858977] dark:text-[#A3A796]">
-              <span className="text-[#C97C5D] font-semibold">* Wajib diisi</span>
-              <span>Validasi otomatis & real-time</span>
-            </div>
+            {config.description && (
+              <p className={`text-[#737766] dark:text-[#A3A796] leading-relaxed whitespace-pre-line mt-2 ${
+                isCompact ? 'text-xs sm:text-sm' : 'text-sm sm:text-base'
+              }`}>
+                {config.description}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Questions Loop */}
-        {config.questions.map((question, index) => {
-          if (!isQuestionVisible(question)) return null;
+        {/* Questions Grid Container (Multi-Column Layout) */}
+        <div className={`grid grid-cols-1 md:grid-cols-12 ${isCompact ? 'gap-3' : 'gap-5'}`}>
+          {config.questions.map((question, index) => {
+            if (!isQuestionVisible(question)) return null;
 
-          const hasErr = Boolean(touched[question.id] && errors[question.id]);
-          const currentVal = answers[question.id];
+            const hasErr = Boolean(touched[question.id] && errors[question.id]);
+            const currentVal = answers[question.id];
+            const colSpan = getColSpanClass(question);
 
-          return (
-            <div
-              id={`field-${question.id}`}
-              key={question.id}
-              className={`bg-white dark:bg-[#22251F] rounded-2xl shadow-sm p-6 sm:p-7 border transition-all ${
-                hasErr
-                  ? 'border-rose-300 dark:border-rose-900/80 bg-rose-50/10 ring-2 ring-rose-100 dark:ring-rose-950/40'
-                  : 'border-[#E5E2D1] dark:border-[#3B3E32] focus-within:border-[#829273]'
-              }`}
-            >
-              <div className="mb-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <span className="text-xs font-bold text-[#829273] tracking-widest uppercase block mb-1">
-                      Pertanyaan {index + 1 < 10 ? `0${index + 1}` : index + 1}
-                    </span>
-                    <label className="block text-base font-semibold text-[#3D4035] dark:text-[#E8E6DF]">
-                      {question.title}
-                      {question.validation.required && (
-                        <span className="text-[#C97C5D] ml-1" title="Pertanyaan ini wajib diisi">
-                          *
+            return (
+              <div
+                id={`field-${question.id}`}
+                key={question.id}
+                className={`${colSpan} bg-white dark:bg-[#22251F] rounded-2xl shadow-xs border transition-all ${
+                  isCompact ? 'p-4 sm:p-5' : 'p-6 sm:p-7'
+                } ${
+                  hasErr
+                    ? 'border-rose-300 dark:border-rose-900/80 bg-rose-50/10 ring-2 ring-rose-100 dark:ring-rose-950/40'
+                    : 'border-[#E5E2D1] dark:border-[#3B3E32] focus-within:border-[#829273]'
+                }`}
+              >
+                <div className={isCompact ? 'mb-2.5' : 'mb-4'}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      {/* Only show Question Number if enabled */}
+                      {config.theme.showQuestionNumbers && (
+                        <span className="text-xs font-bold text-[#829273] tracking-widest uppercase block mb-1">
+                          Pertanyaan {index + 1 < 10 ? `0${index + 1}` : index + 1}
                         </span>
                       )}
-                    </label>
+                      <label className={`block font-semibold text-[#3D4035] dark:text-[#E8E6DF] ${
+                        isCompact ? 'text-sm sm:text-base' : 'text-base'
+                      }`}>
+                        {question.title}
+                        {question.validation.required && (
+                          <span className="text-[#C97C5D] ml-1" title="Pertanyaan ini wajib diisi">
+                            *
+                          </span>
+                        )}
+                      </label>
+                    </div>
                   </div>
+                  {question.description && (
+                    <p className="text-xs text-[#737766] dark:text-[#A3A796] mt-1">
+                      {question.description}
+                    </p>
+                  )}
                 </div>
-                {question.description && (
-                  <p className="text-xs text-[#737766] dark:text-[#A3A796] mt-1">
-                    {question.description}
-                  </p>
-                )}
-              </div>
 
               {/* INPUT TYPE RENDERING */}
               {/* 1. Short text */}
@@ -943,6 +1064,36 @@ export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
                 </div>
               )}
 
+              {/* 10. Individual Health Metric (TB, BB, Tekanan Darah, Lingkar Pinggang, Kolesterol, Gula Darah) */}
+              {question.type === 'health_metric' && (
+                <div className="pt-1">
+                  <SingleHealthMetricInput
+                    type={question.healthMetric?.metricType || 'custom'}
+                    unit={question.healthMetric?.unit}
+                    value={currentVal}
+                    onChange={(val) => {
+                      handleChange(question, val);
+                      handleBlur(question);
+                    }}
+                    isCompact={isCompact}
+                  />
+                </div>
+              )}
+
+              {/* 11. Comprehensive Health Checkup Panel (Pemeriksaan Kesehatan Lengkap) */}
+              {question.type === 'health_checkup' && (
+                <div className="pt-1">
+                  <HealthCheckupPanel
+                    value={currentVal}
+                    onChange={(val) => {
+                      handleChange(question, val);
+                      handleBlur(question);
+                    }}
+                    isCompact={isCompact}
+                  />
+                </div>
+              )}
+
               {/* Error Message Display */}
               {hasErr && (
                 <div className="mt-2.5 flex items-center gap-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 animate-in fade-in duration-150">
@@ -953,6 +1104,7 @@ export const FormRespondentView: React.FC<FormRespondentViewProps> = ({
             </div>
           );
         })}
+        </div>
 
         {/* Submit Action Bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-5 rounded-2xl bg-white dark:bg-[#22251F] border border-[#E5E2D1] dark:border-[#3B3E32] shadow-sm">

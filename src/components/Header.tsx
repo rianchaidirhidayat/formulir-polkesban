@@ -41,6 +41,15 @@ interface HeaderProps {
   responseCount?: number;
   onOpenNotifications?: () => void;
   formTitle?: string;
+  brandName?: string;
+  brandTagline?: string;
+  showBrandTagline?: boolean;
+  logoUrl?: string;
+  logoText?: string;
+  primaryColor?: string;
+  onEditBranding?: () => void;
+  density?: 'compact' | 'comfortable' | 'spacious';
+  onChangeDensity?: (d: 'compact' | 'comfortable' | 'spacious') => void;
   isFirestoreConnected?: boolean;
   onShareForm?: () => void;
   isRespondentMode?: boolean;
@@ -71,6 +80,15 @@ export const Header: React.FC<HeaderProps> = ({
   responseCount = 0,
   onOpenNotifications,
   formTitle = 'Survei Kepuasan Layanan & Registrasi Terpadu',
+  brandName = 'FormPro AI',
+  brandTagline = 'Natural Tones',
+  showBrandTagline = true,
+  logoUrl,
+  logoText = 'F',
+  primaryColor = '#829273',
+  onEditBranding,
+  density,
+  onChangeDensity,
   isFirestoreConnected = true,
   onShareForm,
   isRespondentMode = false,
@@ -110,23 +128,83 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
           {/* Logo & Form Title */}
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-[#829273] flex items-center justify-center text-white font-bold shadow-sm flex-shrink-0">
-              F
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-[#3D4035] dark:text-[#E8E6DF] truncate text-base sm:text-lg tracking-tight">
-                  FormPro AI
-                </span>
-                <span className="hidden sm:inline-block px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-[#829273]/10 text-[#637254] dark:bg-[#829273]/25 dark:text-[#B5C4A6]">
-                  Natural Tones
-                </span>
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            {onEditBranding ? (
+              <button
+                type="button"
+                onClick={onEditBranding}
+                className="group relative flex items-center gap-2.5 sm:gap-3 text-left p-1 -m-1 rounded-xl hover:bg-[#829273]/10 transition-all cursor-pointer"
+                title="Klik untuk mengganti logo dan nama instansi/formulir"
+              >
+                {logoUrl ? (
+                  <div className="w-10 h-10 rounded-xl overflow-hidden shadow-xs border border-[#E5E2D1] dark:border-[#3B3E32] flex-shrink-0 bg-white flex items-center justify-center p-0.5 group-hover:scale-105 transition-transform">
+                    <img
+                      src={logoUrl}
+                      alt={brandName}
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold shadow-xs flex-shrink-0 text-sm uppercase tracking-wide group-hover:scale-105 transition-transform"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    {logoText}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-[#3D4035] dark:text-[#E8E6DF] truncate text-base sm:text-lg tracking-tight group-hover:text-[#829273] transition-colors">
+                      {brandName}
+                    </span>
+                    {showBrandTagline && brandTagline && (
+                      <span className="hidden sm:inline-block px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-[#829273]/15 text-[#637254] dark:bg-[#829273]/30 dark:text-[#B5C4A6]">
+                        {brandTagline}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-[#737766] dark:text-[#A3A796] truncate max-w-[180px] sm:max-w-xs">
+                    {formTitle}
+                  </p>
+                </div>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                {logoUrl ? (
+                  <div className="w-10 h-10 rounded-xl overflow-hidden shadow-xs border border-[#E5E2D1] dark:border-[#3B3E32] flex-shrink-0 bg-white flex items-center justify-center p-0.5">
+                    <img
+                      src={logoUrl}
+                      alt={brandName}
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold shadow-xs flex-shrink-0 text-sm uppercase tracking-wide"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    {logoText}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-[#3D4035] dark:text-[#E8E6DF] truncate text-base sm:text-lg tracking-tight">
+                      {brandName}
+                    </span>
+                    {showBrandTagline && brandTagline && (
+                      <span className="hidden sm:inline-block px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-[#829273]/15 text-[#637254] dark:bg-[#829273]/30 dark:text-[#B5C4A6]">
+                        {brandTagline}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-[#737766] dark:text-[#A3A796] truncate max-w-[180px] sm:max-w-xs">
+                    {formTitle}
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-[#737766] dark:text-[#A3A796] truncate max-w-[200px] sm:max-w-xs">
-                {formTitle}
-              </p>
-            </div>
+            )}
           </div>
 
           {/* Navigation Tabs */}

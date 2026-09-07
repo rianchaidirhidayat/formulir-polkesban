@@ -1,6 +1,23 @@
-import React from 'react';
-import { Palette, Image as ImageIcon, Type, Sparkles, Check, Save, Loader2, CheckCircle2 } from 'lucide-react';
-import { FormConfig, FormTheme } from '../types';
+import React, { useRef } from 'react';
+import {
+  Palette,
+  Image as ImageIcon,
+  Type,
+  Sparkles,
+  Check,
+  Save,
+  Loader2,
+  CheckCircle2,
+  Building2,
+  Tag,
+  Upload,
+  LayoutGrid,
+  Minimize2,
+  Maximize2,
+  Sliders,
+  Hash,
+} from 'lucide-react';
+import { FormConfig, FormTheme, FormDensity, FormLayoutMode } from '../types';
 
 interface ThemeCustomizerProps {
   config: FormConfig;
@@ -87,6 +104,7 @@ export const ThemeCustomizer: React.FC<ThemeCustomizerProps> = ({
   hasUnsavedChanges = false,
 }) => {
   const currentTheme = config.theme;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleUpdateTheme = (updated: Partial<FormTheme>) => {
     onChangeConfig({
@@ -96,6 +114,32 @@ export const ThemeCustomizer: React.FC<ThemeCustomizerProps> = ({
         ...updated,
       },
     });
+  };
+
+  const handleUpdateBranding = (field: 'title' | 'description', val: string) => {
+    onChangeConfig({
+      ...config,
+      [field]: val,
+    });
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Ukuran berkas logo maksimal 2MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        handleUpdateTheme({ logoUrl: result });
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleApplyPreset = (preset: (typeof PRESET_THEMES)[0]) => {
@@ -163,6 +207,282 @@ export const ThemeCustomizer: React.FC<ThemeCustomizerProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Left Column: Theme Controls */}
         <div className="md:col-span-2 space-y-6">
+          {/* Section 1: Logo & Brand Identity */}
+          <div className="bg-white dark:bg-[#22251F] rounded-2xl p-6 border border-[#E5E2D1] dark:border-[#3B3E32] shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E5E2D1] dark:border-[#3B3E32]">
+              <h3 className="text-sm font-bold text-[#3D4035] dark:text-[#E8E6DF] flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-[#829273]" />
+                Identitas, Logo & Nama Formulir Sendiri
+              </h3>
+              <span className="text-[11px] font-semibold text-[#829273] bg-[#829273]/10 dark:bg-[#829273]/25 px-2.5 py-0.5 rounded-full">
+                Kustom
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Logo Upload */}
+              <div className="p-4 rounded-xl border border-[#E5E2D1] dark:border-[#3B3E32] bg-[#FDFCF8] dark:bg-[#2A2D25] space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF]">
+                    Logo Formulir
+                  </span>
+                  {currentTheme.logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateTheme({ logoUrl: '' })}
+                      className="text-[11px] text-rose-600 hover:underline cursor-pointer font-semibold"
+                    >
+                      Hapus Logo
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {currentTheme.logoUrl ? (
+                    <div className="w-12 h-12 rounded-xl overflow-hidden shadow-xs border border-[#E5E2D1] dark:border-[#3B3E32] bg-white flex items-center justify-center p-1 flex-shrink-0">
+                      <img
+                        src={currentTheme.logoUrl}
+                        alt="Logo"
+                        className="w-full h-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold shadow-xs text-lg uppercase flex-shrink-0"
+                      style={{ backgroundColor: currentTheme.primaryColor }}
+                    >
+                      {currentTheme.logoText || (currentTheme.brandName ? currentTheme.brandName.charAt(0) : 'F')}
+                    </div>
+                  )}
+
+                  <div className="flex-1 space-y-1.5">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png, image/jpeg, image/svg+xml, image/webp"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 bg-white dark:bg-[#1E201B] hover:bg-[#F4F2E9] dark:hover:bg-[#33372C] text-[#3D4035] dark:text-[#E8E6DF] border border-[#E5E2D1] dark:border-[#3B3E32] rounded-xl text-xs font-semibold cursor-pointer shadow-2xs"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-[#829273]" />
+                      <span>Unggah Gambar Logo</span>
+                    </button>
+                    <p className="text-[10px] text-[#737766] dark:text-[#A3A796]">
+                      Bisa PNG, JPG, atau SVG
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-[#E5E2D1] dark:border-[#3B3E32] flex items-center gap-2">
+                  <span className="text-[11px] text-[#737766] whitespace-nowrap font-medium">Inisial Huruf:</span>
+                  <input
+                    type="text"
+                    maxLength={3}
+                    value={currentTheme.logoText || ''}
+                    onChange={(e) => handleUpdateTheme({ logoText: e.target.value.toUpperCase() })}
+                    placeholder="Contoh: PK"
+                    className="w-20 px-2 py-1 rounded-lg text-xs font-bold text-center uppercase border border-[#E5E2D1] dark:border-[#3B3E32] bg-white dark:bg-[#1E201B] text-[#3D4035] dark:text-[#E8E6DF]"
+                  />
+                </div>
+              </div>
+
+              {/* Brand Name & Tagline */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF] mb-1">
+                    Nama Instansi / Brand:
+                  </label>
+                  <input
+                    type="text"
+                    value={currentTheme.brandName || ''}
+                    onChange={(e) => handleUpdateTheme({ brandName: e.target.value })}
+                    placeholder="Contoh: Poltekkes Kemenkes Bandung"
+                    className="w-full px-3 py-2 rounded-xl text-xs font-semibold border border-[#E5E2D1] dark:border-[#3B3E32] bg-white dark:bg-[#1E201B] text-[#3D4035] dark:text-[#E8E6DF] focus:ring-2 focus:ring-[#829273]"
+                  />
+                  <p className="text-[10px] text-[#737766] mt-0.5">
+                    Menggantikan tulisan "FormPro AI" di bagian paling atas
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF]">
+                      Tagline / Badge:
+                    </label>
+                    <label className="inline-flex items-center gap-1.5 text-[11px] text-[#737766] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={currentTheme.showBrandTagline !== false}
+                        onChange={(e) => handleUpdateTheme({ showBrandTagline: e.target.checked })}
+                        className="rounded text-[#829273]"
+                      />
+                      Tampilkan
+                    </label>
+                  </div>
+                  <input
+                    type="text"
+                    disabled={currentTheme.showBrandTagline === false}
+                    value={currentTheme.brandTagline || ''}
+                    onChange={(e) => handleUpdateTheme({ brandTagline: e.target.value })}
+                    placeholder="Contoh: Layanan Terpadu OSDM"
+                    className="w-full px-3 py-2 rounded-xl text-xs border border-[#E5E2D1] dark:border-[#3B3E32] bg-white dark:bg-[#1E201B] text-[#3D4035] dark:text-[#E8E6DF] disabled:opacity-50"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Form Title & Description */}
+            <div className="space-y-3 pt-3 border-t border-[#E5E2D1] dark:border-[#3B3E32]">
+              <div>
+                <label className="block text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF] mb-1">
+                  Judul Utama Formulir:
+                </label>
+                <input
+                  type="text"
+                  value={config.title}
+                  onChange={(e) => handleUpdateBranding('title', e.target.value)}
+                  placeholder="Judul Formulir..."
+                  className="w-full px-3.5 py-2 rounded-xl text-xs font-bold border border-[#E5E2D1] dark:border-[#3B3E32] bg-white dark:bg-[#1E201B] text-[#3D4035] dark:text-[#E8E6DF] focus:ring-2 focus:ring-[#829273]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF] mb-1">
+                  Deskripsi / Petunjuk Pengisian Formulir:
+                </label>
+                <textarea
+                  rows={2}
+                  value={config.description}
+                  onChange={(e) => handleUpdateBranding('description', e.target.value)}
+                  placeholder="Keterangan atau panduan bagi pengisi..."
+                  className="w-full px-3.5 py-2 rounded-xl text-xs border border-[#E5E2D1] dark:border-[#3B3E32] bg-white dark:bg-[#1E201B] text-[#3D4035] dark:text-[#E8E6DF] focus:ring-2 focus:ring-[#829273]"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Space-saving Layout & Density Mode */}
+          <div className="bg-white dark:bg-[#22251F] rounded-2xl p-6 border border-[#E5E2D1] dark:border-[#3B3E32] shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E5E2D1] dark:border-[#3B3E32]">
+              <h3 className="text-sm font-bold text-[#3D4035] dark:text-[#E8E6DF] flex items-center gap-2">
+                <LayoutGrid className="w-4 h-4 text-[#829273]" />
+                Tampilan Hemat Ruang & Tata Letak Fleksibel
+              </h3>
+              <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                Efisien
+              </span>
+            </div>
+
+            {/* Density Selector */}
+            <div>
+              <label className="block text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF] mb-2">
+                Kerapatan Tampilan (Bantalan Ruang & Ukuran):
+              </label>
+              <div className="grid grid-cols-3 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => handleUpdateTheme({ density: 'compact' })}
+                  className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                    (currentTheme.density || 'compact') === 'compact'
+                      ? 'border-[#829273] bg-[#829273]/10 dark:bg-[#829273]/20 ring-1 ring-[#829273]'
+                      : 'border-[#E5E2D1] dark:border-[#3B3E32] bg-[#FDFCF8] dark:bg-[#2A2D25]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF]">
+                      Ringkas / Kompak
+                    </span>
+                    <Minimize2 className="w-3.5 h-3.5 text-[#829273]" />
+                  </div>
+                  <p className="text-[10px] text-[#737766] dark:text-[#A3A796]">
+                    Hemat ruang maksimal, jarak antar isian rapat, muat banyak pertanyaan dalam satu layar.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleUpdateTheme({ density: 'comfortable' })}
+                  className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                    currentTheme.density === 'comfortable'
+                      ? 'border-[#829273] bg-[#829273]/10 dark:bg-[#829273]/20 ring-1 ring-[#829273]'
+                      : 'border-[#E5E2D1] dark:border-[#3B3E32] bg-[#FDFCF8] dark:bg-[#2A2D25]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF]">
+                      Standar
+                    </span>
+                    <Sliders className="w-3.5 h-3.5 text-[#829273]" />
+                  </div>
+                  <p className="text-[10px] text-[#737766] dark:text-[#A3A796]">
+                    Proporsi seimbang antara jarak dan teks.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleUpdateTheme({ density: 'spacious' })}
+                  className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                    currentTheme.density === 'spacious'
+                      ? 'border-[#829273] bg-[#829273]/10 dark:bg-[#829273]/20 ring-1 ring-[#829273]'
+                      : 'border-[#E5E2D1] dark:border-[#3B3E32] bg-[#FDFCF8] dark:bg-[#2A2D25]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF]">
+                      Lapang
+                    </span>
+                    <Maximize2 className="w-3.5 h-3.5 text-[#829273]" />
+                  </div>
+                  <p className="text-[10px] text-[#737766] dark:text-[#A3A796]">
+                    Bantalan ekstra lega untuk formulir bertahap.
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Layout Mode & Question Numbering */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div>
+                <label className="block text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF] mb-1.5">
+                  Tata Letak Kolom:
+                </label>
+                <select
+                  value={currentTheme.layoutMode || 'auto'}
+                  onChange={(e) => handleUpdateTheme({ layoutMode: e.target.value as FormLayoutMode })}
+                  className="w-full px-3 py-2 rounded-xl text-xs font-medium border border-[#E5E2D1] dark:border-[#3B3E32] bg-white dark:bg-[#1E201B] text-[#3D4035] dark:text-[#E8E6DF]"
+                >
+                  <option value="auto">Fleksibel (Sesuai Lebar Pertanyaan: 100%, 50%, 33%)</option>
+                  <option value="grid">Otomatis 2 Kolom Sejajar (Hemat Tempat)</option>
+                  <option value="single">1 Kolom Vertikal Penuh</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col justify-end">
+                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-[#E5E2D1] dark:border-[#3B3E32] bg-[#FDFCF8] dark:bg-[#2A2D25] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(currentTheme.showQuestionNumbers)}
+                    onChange={(e) => handleUpdateTheme({ showQuestionNumbers: e.target.checked })}
+                    className="rounded text-[#829273] focus:ring-[#829273]"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF] block">
+                      Tampilkan Label "Pertanyaan 01, 02"?
+                    </span>
+                    <span className="text-[10px] text-[#737766] dark:text-[#A3A796]">
+                      Bawaan: Dimatikan agar tampilan bersih & rapi
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
           {/* Preset Cards */}
           <div className="bg-white dark:bg-[#22251F] rounded-2xl p-6 border border-[#E5E2D1] dark:border-[#3B3E32] shadow-sm">
             <h3 className="text-sm font-bold text-[#3D4035] dark:text-[#E8E6DF] flex items-center gap-2 mb-4">
@@ -306,8 +626,37 @@ export const ThemeCustomizer: React.FC<ThemeCustomizerProps> = ({
               className="rounded-xl p-4 border border-[#E5E2D1] dark:border-[#3B3E32] overflow-hidden shadow-inner"
               style={{ backgroundColor: currentTheme.backgroundColor }}
             >
+              {/* Mini Brand Bar */}
+              <div className="flex items-center gap-2 mb-2 px-1">
+                {currentTheme.logoUrl ? (
+                  <div className="w-6 h-6 rounded-md overflow-hidden bg-white border border-[#E5E2D1] dark:border-[#3B3E32] flex items-center justify-center p-0.5 shadow-2xs">
+                    <img
+                      src={currentTheme.logoUrl}
+                      alt="Logo"
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className="w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold shadow-2xs"
+                    style={{ backgroundColor: currentTheme.primaryColor }}
+                  >
+                    {currentTheme.logoText || (currentTheme.brandName ? currentTheme.brandName.charAt(0) : 'F')}
+                  </div>
+                )}
+                <span className="text-xs font-bold text-[#3D4035] dark:text-[#E8E6DF] truncate">
+                  {currentTheme.brandName || 'FormPro AI'}
+                </span>
+                {currentTheme.showBrandTagline !== false && currentTheme.brandTagline && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#829273]/20 font-semibold truncate max-w-[90px]">
+                    {currentTheme.brandTagline}
+                  </span>
+                )}
+              </div>
+
               {currentTheme.bannerImage && (
-                <div className="h-16 w-full -mx-4 -mt-4 mb-3 overflow-hidden">
+                <div className="h-16 w-full -mx-4 mb-3 overflow-hidden">
                   <img
                     src={currentTheme.bannerImage}
                     alt="Preview"
@@ -325,13 +674,13 @@ export const ThemeCustomizer: React.FC<ThemeCustomizerProps> = ({
                   {config.title}
                 </h4>
                 <p className="text-[11px] text-[#737766] truncate mt-0.5">
-                  Pratinjau tema tampilan kustom.
+                  {config.description || 'Pratinjau tema tampilan kustom.'}
                 </p>
               </div>
 
               <div className="bg-white dark:bg-[#22251F] p-3 rounded-xl shadow-sm space-y-2 mb-3 border border-[#E5E2D1] dark:border-[#3B3E32]">
                 <div className="text-[11px] font-semibold text-[#3D4035] dark:text-[#E8E6DF]">
-                  1. Pertanyaan Sampel
+                  {currentTheme.showQuestionNumbers ? '1. ' : ''}Pertanyaan Sampel
                 </div>
                 <div
                   className="p-2 rounded-lg text-[11px] font-medium border flex items-center justify-between"
